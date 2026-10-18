@@ -69,9 +69,11 @@ Supported integrations:
 | --- | --- |
 | Text and Agent planning | Chat Completions |
 | Image generation | Agnes and OpenAI-compatible image APIs |
-| Video generation | Agnes v2.0 and 2.5 Flash text-to-video APIs |
+| Video generation | Agnes Video 2.5 / 2.5 Flash text-to-video, plus the retired v2.0 request format |
 
-Other video providers require an adapter, not just a different model name. Default model IDs are `agnes-2.5-flash` for text, `agnes-image-2.1-flash` for images, and `agnes-video-v2.0` for video. Provider availability and pricing can change; check your provider before generating.
+Other video providers require an adapter, not just a different model name. Default model IDs are `agnes-3.0-flash` for text, `agnes-image-2.5-flash` for images, and `agnes-video-2.5-flash` for video. Image 2.5 Flash uses the same JSON `/images/generations` contract as Image 2.1 Flash (`size` tier, `ratio`, reference images in `extra_body.image`, and `return_base64` for text-to-image). Video 2.5 Flash creates an async `/videos` task with `seconds`, `mode`, `size: "720P"`, and `aspect_ratio`, then reads the completed task's top-level `url`. Paid `agnes-video-2.5` uses that same request. Saved selections of the retired `agnes-video-v2.0` id still resolve and keep the older `width` / `height` / `num_frames` payload.
+
+Built-in labels follow the [Agnes pricing page](https://www.agnes-ai.com/zh-Hans/docs/pricing) as of 2026-10-18. Currently free: text `agnes-3.0-flash` and `agnes-2.5-flash`; image `agnes-image-2.0-flash`, `agnes-image-2.1-flash`, and `agnes-image-2.5-flash`. `agnes-video-2.5-flash` is free for a limited time at 720P. Paid: `agnes-2.5-pro`, `agnes-2.5-pro-beta`, and `agnes-video-2.5`. `agnes-3.0-pro` is coming soon and paid. `agnes-video-v2.0` no longer appears on the pricing page and is labeled retired. Provider availability and pricing can change; the platform bill is the source of truth.
 
 Model credentials are stored by the local backend in `.local/model-configs.json`, with atomic writes and file permissions of `0600`. Environment configuration in `.env` is also supported. The browser persists configuration selections rather than model API keys. Do not share `.local` or your environment files.
 

@@ -15,10 +15,26 @@ from typing import Literal
 
 Kind = Literal['text', 'image', 'video']
 Protocol = Literal['chat', 'openai-image', 'agnes-image', 'agnes-video']
-CATALOG = {
-    'text': ['agnes-2.5-flash', 'agnes-3.0-flash'],
-    'image': ['agnes-image-2.0-flash', 'agnes-image-2.1-flash', 'agnes-image-2.5-flash'],
-    'video': ['agnes-video-v2.0', 'agnes-video-2.5-flash'],
+# Labels follow https://www.agnes-ai.com/zh-Hans/docs/pricing as of 2026-10-18.
+# agnes-video-v2.0 is no longer listed; it stays so saved selections still resolve.
+CATALOG: dict[Kind, dict[str, str]] = {
+    'text': {
+        'agnes-3.0-flash': '当前免费',
+        'agnes-2.5-flash': '当前免费',
+        'agnes-2.5-pro': '付费',
+        'agnes-2.5-pro-beta': '付费',
+        'agnes-3.0-pro': '即将上线 · 付费',
+    },
+    'image': {
+        'agnes-image-2.5-flash': '当前免费',
+        'agnes-image-2.1-flash': '当前免费',
+        'agnes-image-2.0-flash': '当前免费',
+    },
+    'video': {
+        'agnes-video-2.5-flash': '限时免费',
+        'agnes-video-2.5': '付费',
+        'agnes-video-v2.0': '已下架',
+    },
 }
 DEFAULT_URL = 'https://apihub.agnes-ai.com/v1'
 
@@ -117,7 +133,7 @@ class ConfigStore:
                         'base_url': connection['base_url'] if connection else (url if model in models else DEFAULT_URL),
                         'api_key': connection['api_key'] if connection else (key if model in models or 'agnes-ai.' in url else ''),
                         'builtin': True,
-                        'pricing': ('限时免费' if model == 'agnes-video-2.5-flash' else '当前免费') if model in CATALOG[kind] else '',
+                        'pricing': CATALOG[kind].get(model, ''),
                     }
                     if kind == 'video':
                         parsed = urlsplit(entry['base_url'])

@@ -21,7 +21,7 @@ type ChatResponse = ErrorResponse & {
 };
 
 export const DEFAULT_VIDEO_SETTINGS: VideoGenerationSettings = {
-  model: "agnes-video-v2.0",
+  model: "agnes-video-2.5-flash",
   aspectRatio: "adaptive",
   resolution: "720p",
   duration: 5,

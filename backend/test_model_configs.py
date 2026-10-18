@@ -24,6 +24,7 @@ class ModelConfigTests(IsolatedAsyncioTestCase):
         self.calls = []
         self.response_status = 200
         self.probe_status = 200
+        self.video_result = {'status': 'completed', 'metadata': {'url': 'https://media.example/result.mp4'}}
         self.upstream = httpx.AsyncClient(transport=httpx.MockTransport(self.handle))
         api.app.state.http_client = self.upstream
         self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=api.app), base_url='http://test')
@@ -47,7 +48,7 @@ class ModelConfigTests(IsolatedAsyncioTestCase):
         if request.url.path.endswith('/videos'):
             return httpx.Response(200, json={'video_id': 'video-123'})
         if request.url.path == '/agnesapi':
-            return httpx.Response(200, json={'status': 'completed', 'metadata': {'url': 'https://media.example/result.mp4'}})
+            return httpx.Response(200, json=self.video_result)
         return httpx.Response(200, content=b'video', headers={'content-type': 'video/mp4'})
 
     async def create(self, kind='text', protocol='chat', model='test-model', base_url='https://models.example/v1'):
@@ -123,21 +124,66 @@ class ModelConfigTests(IsolatedAsyncioTestCase):
             self.assertIn('application/json' if protocol == 'agnes-image' else 'multipart/form-data', call.headers['content-type'])
 
     async def test_both_video_payloads_and_polling(self):
-        for model in ('agnes-video-v2.0', 'agnes-video-2.5-flash'):
+        for model in ('agnes-video-v2.0', 'agnes-video-2.5', 'agnes-video-2.5-flash'):
             self.calls.clear()
             entry = await self.create('video', 'agnes-video', model)
             response = await self.client.post('/api/videos/generate', json={'prompt': 'hi', 'model_config_id': entry['id'], 'duration': 5, 'aspect_ratio': '16:9'})
             self.assertEqual(response.status_code, 200, response.text)
             payload = json.loads(self.calls[0].content)
-            if model.endswith('flash'):
+            if model.startswith('agnes-video-2.5'):
                 self.assertEqual(payload['size'], '720P')
                 self.assertEqual(payload['seconds'], '5')
+                self.assertEqual(payload['mode'], 'text')
+                self.assertEqual(payload['aspect_ratio'], '16:9')
                 self.assertNotIn('num_frames', payload)
+                self.assertNotIn('width', payload)
             else:
                 self.assertEqual(payload['num_frames'], 121)
+                self.assertNotIn('seconds', payload)
             self.assertEqual(self.calls[1].url.params['video_id'], 'video-123')
             self.assertEqual(self.calls[1].url.params['model_name'], model)
             self.assertNotIn('authorization', self.calls[-1].headers)
+
+    async def test_video_25_reads_top_level_result_url(self):
+        self.video_result = {
+            'status': 'completed',
+            'metadata': None,
+            'url': 'https://media.example/flash.mp4',
+            'seconds': '5',
+            'size': '720P',
+        }
+        entry = await self.create('video', 'agnes-video', 'agnes-video-2.5-flash')
+        response = await self.client.post('/api/videos/generate', json={'prompt': 'hi', 'model_config_id': entry['id'], 'duration': 5, 'aspect_ratio': '9:16'})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(str(self.calls[-1].url), 'https://media.example/flash.mp4')
+        payload = json.loads(self.calls[0].content)
+        self.assertEqual(payload['aspect_ratio'], '9:16')
+        self.assertEqual(payload['size'], '720P')
+
+    async def test_catalog_labels_and_latest_free_defaults(self):
+        with patch.dict(os.environ):
+            for key in ('MJH_LLM_MODEL', 'MJH_LLM_MODELS', 'MJH_IMAGE_MODEL', 'MJH_IMAGE_MODELS', 'MJH_VIDEO_MODEL', 'MJH_VIDEO_MODELS'):
+                os.environ.pop(key, None)
+            fresh = api.Settings.from_environment()
+        self.assertEqual(fresh.model, 'agnes-3.0-flash')
+        self.assertEqual(fresh.image_model, 'agnes-image-2.5-flash')
+        self.assertEqual(fresh.video_model, 'agnes-video-2.5-flash')
+        self.assertIn('agnes-2.5-flash', fresh.models)
+        store = ConfigStore(self.store.path, fresh)
+        listed = {entry['id']: entry for entry in store.all() if entry['builtin']}
+        self.assertEqual(listed['builtin:text:agnes-3.0-flash']['pricing'], '当前免费')
+        self.assertEqual(listed['builtin:text:agnes-2.5-flash']['pricing'], '当前免费')
+        self.assertEqual(listed['builtin:text:agnes-2.5-pro']['pricing'], '付费')
+        self.assertEqual(listed['builtin:text:agnes-2.5-pro-beta']['pricing'], '付费')
+        self.assertEqual(listed['builtin:text:agnes-3.0-pro']['pricing'], '即将上线 · 付费')
+        self.assertEqual(listed['builtin:image:agnes-image-2.5-flash']['pricing'], '当前免费')
+        self.assertEqual(listed['builtin:image:agnes-image-2.1-flash']['pricing'], '当前免费')
+        self.assertEqual(listed['builtin:image:agnes-image-2.0-flash']['pricing'], '当前免费')
+        self.assertEqual(listed['builtin:video:agnes-video-2.5-flash']['pricing'], '限时免费')
+        self.assertEqual(listed['builtin:video:agnes-video-2.5']['pricing'], '付费')
+        retired = listed['builtin:video:agnes-video-v2.0']
+        self.assertEqual(retired['pricing'], '已下架')
+        self.assertEqual(retired['model'], 'agnes-video-v2.0')
 
     async def test_connection_probe_never_generates(self):
         entry = await self.create()

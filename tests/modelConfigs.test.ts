@@ -30,6 +30,8 @@ console.log('✓ legacy selection migration, duplicate model IDs, persistence, d
 import { generateTextForCard } from '../src/lib/textWriter';
 import { optimizeImagePrompt, generateImages, DEFAULT_IMAGE_SETTINGS } from '../src/lib/imageWriter';
 import { optimizeVideoPrompt, generateVideo, DEFAULT_VIDEO_SETTINGS } from '../src/lib/videoWriter';
+assert.equal(DEFAULT_IMAGE_SETTINGS.model, 'agnes-image-2.5-flash');
+assert.equal(DEFAULT_VIDEO_SETTINGS.model, 'agnes-video-2.5-flash');
 catalog.configs.push(
   {id:'custom:image',name:'图片连接',model:'same-image',kind:'image',protocol:'openai-image',base_url:'https://image.example/v1',builtin:false,configured:true,pricing:''},
   {id:'custom:video',name:'视频连接',model:'agnes-video-v2.0',kind:'video',protocol:'agnes-video',base_url:'https://video.example/v1',builtin:false,configured:true,pricing:''},

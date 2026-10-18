@@ -44,7 +44,7 @@ export type ImageReferenceOption = {
 };
 
 export const DEFAULT_IMAGE_SETTINGS: ImageGenerationSettings = {
-  model: "agnes-image-2.1-flash",
+  model: "agnes-image-2.5-flash",
   aspectRatio: "adaptive",
   resolution: "1K",
   style: "自动风格",
