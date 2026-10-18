@@ -76,6 +76,54 @@ class ImageProviderAdapterTests(IsolatedAsyncioTestCase):
             images[0].data_url,
             f"data:image/png;base64,{RESULT_BASE64}",
         )
+        self.assertNotIn("return_base64", kwargs["json"])
+
+    async def test_agnes_25_reference_matches_21_contract(self) -> None:
+        client = FakeImageClient()
+        configured = replace(backend_app.settings, image_provider="agnes")
+
+        with patch.object(backend_app, "settings", configured):
+            await backend_app.call_image_model(
+                client,
+                "agnes-image-2.5-flash",
+                image_request(),
+            )
+
+        url, kwargs = client.calls[0]
+        self.assertTrue(url.endswith("/images/generations"))
+        self.assertEqual(kwargs["json"]["model"], "agnes-image-2.5-flash")
+        self.assertEqual(kwargs["json"]["size"], "1K")
+        self.assertEqual(kwargs["json"]["ratio"], "16:9")
+        self.assertEqual(
+            kwargs["json"]["extra_body"],
+            {
+                "response_format": "b64_json",
+                "image": [REFERENCE_DATA_URL],
+            },
+        )
+        self.assertNotIn("return_base64", kwargs["json"])
+
+    async def test_agnes_25_text_to_image_requests_return_base64(self) -> None:
+        client = FakeImageClient()
+        configured = replace(backend_app.settings, image_provider="agnes")
+        request = backend_app.ImageGenerationRequest(
+            prompt="雨夜街景",
+            aspect_ratio="16:9",
+            resolution="2K",
+        )
+
+        with patch.object(backend_app, "settings", configured):
+            await backend_app.call_image_model(
+                client,
+                "agnes-image-2.5-flash",
+                request,
+            )
+
+        _, kwargs = client.calls[0]
+        self.assertEqual(kwargs["json"]["size"], "2K")
+        self.assertEqual(kwargs["json"]["ratio"], "16:9")
+        self.assertIs(kwargs["json"]["return_base64"], True)
+        self.assertEqual(kwargs["json"]["extra_body"], {"response_format": "b64_json"})
 
     async def test_agnes_20_also_uses_json_generations(self) -> None:
         client = FakeImageClient()

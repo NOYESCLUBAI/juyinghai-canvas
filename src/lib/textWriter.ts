@@ -153,7 +153,7 @@ export async function readTextModelOptions() {
   }
 
   const data = (await response.json()) as HealthResponse;
-  const defaultModel = data.model?.trim() || "agnes-2.5-flash";
+  const defaultModel = data.model?.trim() || "agnes-3.0-flash";
   const configuredModels = (data.models || [])
     .map((model) => model.trim())
     .filter(Boolean);

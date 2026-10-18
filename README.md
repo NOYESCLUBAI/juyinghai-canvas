@@ -31,7 +31,7 @@ npm run dev
 
 漫金海只在后端保存模型密钥，浏览器不直接访问模型服务。前端始终调用统一的 `POST /api/images/generate`；FastAPI 根据选中的模型配置选择供应商协议，旧请求仍兼容 `.env` 设置。Agnes 的文生图和图生图都采用 JSON `/images/generations`，参考图放在 `extra_body.image`；标准 OpenAI 供应商的参考图则采用 multipart `/images/edits`。视频生成采用 Agnes AI 异步 `/videos` 接口，由后端创建任务、轮询结果并把最终 MP4 返回给浏览器。
 
-Agnes 图片适配以官方的 [Image 2.1 Flash 文档](https://agnes-ai.com/zh-Hans/docs/agnes-image-21-flash) 和 [Image 2.0 Flash 文档](https://agnes-ai.com/zh-Hans/docs/agnes-image-20-flash) 为准。
+Agnes 图片适配以官方的 [Image 2.5 Flash 文档](https://agnes-ai.com/zh-Hans/docs/agnes-image-25-flash)、[Image 2.1 Flash 文档](https://agnes-ai.com/zh-Hans/docs/agnes-image-21-flash) 和 [Image 2.0 Flash 文档](https://agnes-ai.com/zh-Hans/docs/agnes-image-20-flash) 为准。2.5 Flash 与 2.1 Flash 的请求协议相同：JSON `/images/generations`，用分辨率档位 `size` 配合 `ratio`，参考图放在 `extra_body.image`；文生图要 Base64 时同时发送 `return_base64`。
 
 | 接口 | 用途 | 输入 | 输出 |
 | --- | --- | --- | --- |
@@ -40,9 +40,9 @@ Agnes 图片适配以官方的 [Image 2.1 Flash 文档](https://agnes-ai.com/zh-
 | `POST /api/images/generate` | 图片生成与参考图编辑 | 提示词、模型、比例、清晰度、风格、摄影机、数量、引用内容 | 图片 data URL、实际模型 |
 | `POST /api/videos/generate` | 文字生成视频 | 提示词、模型、比例、时长 | MP4 视频 |
 
-文字默认选择 `agnes-2.5-flash`，图片默认选择 `agnes-image-2.1-flash`，视频默认选择 `agnes-video-v2.0`。用户可选择内置模型或添加自定义模型配置；后端不进行自动回退，所选模型不可用时直接返回错误，原卡片内容保持不变。
+文字默认选择 `agnes-3.0-flash`，图片默认选择 `agnes-image-2.5-flash`，视频默认选择 `agnes-video-2.5-flash`。用户可选择内置模型或添加自定义模型配置；后端不进行自动回退，所选模型不可用时直接返回错误，原卡片内容保持不变。已保存的旧模型 ID（包括已下架的 `agnes-video-v2.0`）仍会解析到对应内置配置，不会被清空。
 
-图片服务支持 Agnes 与 OpenAI 兼容协议；文字支持 Chat Completions；视频支持 Agnes v2.0 与 2.5 Flash 的文生视频协议。其他视频平台需要增加对应适配器，不能只替换模型名称。
+图片服务支持 Agnes 与 OpenAI 兼容协议；文字支持 Chat Completions。视频默认使用 Agnes Video 2.5 Flash 的异步 `/videos` 文生视频协议（`seconds`、`mode`、`size: "720P"`、`aspect_ratio`），完成后优先读取任务结果顶层 `url`。付费的 `agnes-video-2.5` 使用同一套请求；已下架的 `agnes-video-v2.0` 仍走原来的 `width` / `height` / `num_frames` 格式。其他视频平台需要增加对应适配器，不能只替换模型名称。
 
 ## 模型管理
 
@@ -53,7 +53,7 @@ Agnes 图片适配以官方的 [Image 2.1 Flash 文档](https://agnes-ai.com/zh-
 - 编辑时 Key 留空保留原密钥。删除当前配置后需重新选择模型，不自动回退。
 - 模型配置与 Key 写入本机 `.local/model-configs.json`，原子保存、文件权限 `0600`，不写入 `.env`。该文件被排除版本管理，不要随项目分享；浏览器只持久化配置选择，不保存 Key。
 - 「测试连接」只读取上游模型目录，不创建生成任务。目录可达不等于生成成功；没有目录接口时显示「生成时验证」。
-- 内置免费目录按 2026-09-20 的 [Agnes 官方定价](https://www.agnes-ai.com/zh-Hans/docs/pricing) 标注，包括文字 2.5/3.0 Flash、图片 2.0/2.1/2.5 Flash、视频 v2.0/2.5 Flash。视频 2.5 Flash 为限时免费，实际费用以平台账单为准。
+- 内置目录按 2026-10-18 的 [Agnes 官方定价](https://www.agnes-ai.com/zh-Hans/docs/pricing) 标注。当前免费：文字 `agnes-3.0-flash`、`agnes-2.5-flash`；图片 `agnes-image-2.0-flash`、`agnes-image-2.1-flash`、`agnes-image-2.5-flash`。视频 `agnes-video-2.5-flash` 限时免费（仅 720P）。付费：`agnes-2.5-pro`、`agnes-2.5-pro-beta`、`agnes-video-2.5`。`agnes-3.0-pro` 即将上线且为付费。`agnes-video-v2.0` 已不在定价页，目录中保留并标为已下架。实际费用以平台账单为准。
 
 配置接口：`GET/POST /api/model-configs`、`PUT/DELETE /api/model-configs/{id}`、`PUT /api/model-configs/agnes`、`POST /api/model-configs/{id}/test`。生成接口均支持 `model_config_id`（优先于旧 `model`），仅在任务开始时读取该配置，之后修改配置不影响进行中的请求。
 

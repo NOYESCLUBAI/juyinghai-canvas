@@ -54,13 +54,13 @@ class Settings:
 
     @classmethod
     def from_environment(cls) -> "Settings":
-        model = os.getenv("MJH_LLM_MODEL", "agnes-2.5-flash").strip()
+        model = os.getenv("MJH_LLM_MODEL", "agnes-3.0-flash").strip()
         configured_models = tuple(
             dict.fromkeys(
                 item.strip()
                 for item in os.getenv(
                     "MJH_LLM_MODELS",
-                    "agnes-2.5-flash,agnes-2.0-flash",
+                    "agnes-3.0-flash,agnes-2.5-flash",
                 ).split(",")
                 if item.strip()
             )
@@ -77,14 +77,14 @@ class Settings:
         api_key = os.getenv("MJH_LLM_API_KEY", "").strip()
         image_model = os.getenv(
             "MJH_IMAGE_MODEL",
-            "agnes-image-2.1-flash",
+            "agnes-image-2.5-flash",
         ).strip()
         configured_image_models = tuple(
             dict.fromkeys(
                 item.strip()
                 for item in os.getenv(
                     "MJH_IMAGE_MODELS",
-                    "agnes-image-2.1-flash,agnes-image-2.0-flash",
+                    "agnes-image-2.5-flash,agnes-image-2.1-flash,agnes-image-2.0-flash",
                 ).split(",")
                 if item.strip()
             )
@@ -96,14 +96,14 @@ class Settings:
         )
         video_model = os.getenv(
             "MJH_VIDEO_MODEL",
-            "agnes-video-v2.0",
+            "agnes-video-2.5-flash",
         ).strip()
         configured_video_models = tuple(
             dict.fromkeys(
                 item.strip()
                 for item in os.getenv(
                     "MJH_VIDEO_MODELS",
-                    "agnes-video-v2.0",
+                    "agnes-video-2.5-flash",
                 ).split(",")
                 if item.strip()
             )
@@ -325,6 +325,11 @@ def image_provider_name(provider: str) -> str:
     return names.get(provider, provider)
 
 
+# Agnes Video 2.5 and 2.5 Flash share the async /videos contract.
+# Flash accepts only size "720P"; this app always requests 720P.
+AGNES_VIDEO_25_MODELS = frozenset({"agnes-video-2.5", "agnes-video-2.5-flash"})
+
+
 def video_size(aspect_ratio: str) -> tuple[int, int]:
     sizes = {
         "adaptive": (1152, 768),
@@ -502,9 +507,13 @@ async def call_agnes_image_model(
             image_request.resolution,
         )
     else:
+        # 2.1 Flash and 2.5 Flash share this contract: tier size + ratio,
+        # reference images in extra_body.image, and return_base64 for text-to-image.
         payload["size"] = image_request.resolution
         if image_request.aspect_ratio != "adaptive":
             payload["ratio"] = image_request.aspect_ratio
+        if not references:
+            payload["return_base64"] = True
 
     try:
         response = await client.post(
@@ -627,20 +636,30 @@ async def call_video_model(
         "Authorization": f"Bearer {cfg.video_api_key}",
         "Content-Type": "application/json",
     }
+    if model in AGNES_VIDEO_25_MODELS:
+        create_payload: dict[str, Any] = {
+            "model": model,
+            "prompt": video_request.prompt.strip(),
+            "seconds": str(video_request.duration),
+            "mode": "text",
+            "size": "720P",
+            "aspect_ratio": "16:9" if video_request.aspect_ratio == "adaptive" else video_request.aspect_ratio,
+        }
+    else:
+        create_payload = {
+            "model": model,
+            "prompt": video_request.prompt.strip(),
+            "width": width,
+            "height": height,
+            "num_frames": video_request.duration * 24 + 1,
+            "frame_rate": 24,
+        }
 
     try:
         create_response = await client.post(
             f"{cfg.video_base_url}/videos",
             headers=headers,
-            json=({
-                "model": model, "prompt": video_request.prompt.strip(),
-                "seconds": str(video_request.duration), "mode": "text", "size": "720P",
-                "aspect_ratio": "16:9" if video_request.aspect_ratio == "adaptive" else video_request.aspect_ratio,
-            } if model == "agnes-video-2.5-flash" else {
-                "model": model, "prompt": video_request.prompt.strip(),
-                "width": width, "height": height,
-                "num_frames": video_request.duration * 24 + 1, "frame_rate": 24,
-            }),
+            json=create_payload,
             timeout=httpx.Timeout(60, connect=15),
         )
     except httpx.TimeoutException as exc:
@@ -715,8 +734,10 @@ async def call_video_model(
     if result is None:
         raise ProviderError(504, "视频生成等待超时，请稍后重试")
 
-    metadata = result.get("metadata")
-    video_url = metadata.get("url") if isinstance(metadata, dict) else None
+    video_url = result.get("url")
+    if not isinstance(video_url, str) or not video_url.startswith(("http://", "https://")):
+        metadata = result.get("metadata")
+        video_url = metadata.get("url") if isinstance(metadata, dict) else None
     if not isinstance(video_url, str) or not video_url.startswith(
         ("http://", "https://")
     ):
