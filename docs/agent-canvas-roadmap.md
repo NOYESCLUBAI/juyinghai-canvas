@@ -20,6 +20,8 @@ OiiOii、Lovart、FLORA 的 FAUNA、TapNow Agent 的共同能力是：对话持�
 
 P0 不追求七个专职 Agent，也不追求接 25 个模型。先让一个 Agent 用工具可靠地改这张画布。循环使用 Vercel AI SDK，放在浏览器里；不手写状态机，也不把循环搬进 Python。理由见第 6 节。
 
+把本机应用做成公开网站是另一条工作，见 [公开上线检查清单](public-launch-checklist.md)。Agent 的 P0 可以先在本机做完；对公网开放之前，账号、云端画布和按用户保管的密钥要先于或同时于 Agent 会话落盘。
+
 ## 2. 现状：它能做什么，不能做什么
 
 ### 2.1 一次指令实际怎么走
