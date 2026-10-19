@@ -28,6 +28,7 @@ import {
   useEffect,
   type ChangeEvent,
 } from "react";
+import { AgentHighlightContext } from "../agent/highlight";
 import { createPortal } from "react-dom";
 import type {
   CanvasCardData,
@@ -257,6 +258,7 @@ export function CanvasCard({
   selected,
 }: NodeProps<CanvasNode>) {
   const actions = useCanvasActions();
+  const agentActive = useContext(AgentHighlightContext).has(id);
   const [previewOpen, setPreviewOpen] = useState(false);
   const previewDialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { if (previewOpen) previewDialog.current?.showModal(); else previewDialog.current?.close(); }, [previewOpen]);
@@ -310,7 +312,7 @@ export function CanvasCard({
         <div className="asset-large-media"><img src={data.assetUrl} alt={data.fileName || "画布图片"}/></div>
         <footer><span>原图预览</span><div className="global-preview-actions"><button type="button" onClick={downloadImage}><Download size={16}/>下载图片</button></div></footer>
       </dialog>, document.body)}
-      <article className={`canvas-card canvas-card-${data.kind} ${imageReady ? "canvas-image-ready" : ""}`}>
+      <article className={`canvas-card canvas-card-${data.kind} ${imageReady ? "canvas-image-ready" : ""} ${agentActive ? "is-agent-active" : ""}`}>
       <header className="canvas-card-header">
         <span className="canvas-card-kind">
           <Icon size={15} strokeWidth={1.75} />
@@ -374,6 +376,9 @@ export function CanvasCard({
         ) : (
           <VideoEmptyState id={id} />
         )}
+        {data.pendingGeneration ? (
+          <p className="agent-pending-generation">尚未生成 · {data.pendingGeneration.kind === "video" ? "视频" : "图片"}提案</p>
+        ) : null}
         {imageGenerating ? (
           <div className="image-generation-progress" aria-live="polite">
             <span>

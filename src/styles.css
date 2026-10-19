@@ -1052,6 +1052,17 @@ textarea:focus-visible {
   box-shadow: 0 8px 28px rgba(15, 15, 15, 0.1);
 }
 
+.canvas-card.is-agent-active {
+  border-color: #2f6f8f;
+  box-shadow: 0 0 0 2px rgba(47, 111, 143, 0.35);
+}
+
+.agent-pending-generation {
+  margin: 8px 10px 0;
+  color: #6a5a32;
+  font-size: 11px;
+}
+
 .canvas-card-header {
   flex: 0 0 39px;
   display: flex;
@@ -3195,6 +3206,41 @@ textarea:focus-visible {
   color: var(--ink-mute);
   font-size: 10px;
   line-height: 1.4;
+}
+
+.agent-steps li span {
+  color: var(--ink-soft);
+  font-weight: 700;
+}
+
+.agent-step-running svg {
+  animation: agent-spin 900ms linear infinite;
+}
+
+.agent-step-error svg {
+  color: #9a4d4d;
+}
+
+.agent-approval-card {
+  margin-top: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+}
+
+.agent-approval-card strong,
+.agent-approval-card p {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.agent-save-warning {
+  margin: 0 16px 8px;
+  color: #8a5a2a;
+  font-size: 11px;
 }
 
 .agent-steps svg {

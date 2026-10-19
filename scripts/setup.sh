@@ -11,7 +11,7 @@ if [[ -z "$SETUP_PYTHON" ]]; then
 fi
 if [[ -z "$SETUP_PYTHON" ]]; then echo '请安装 Python 3.10+，或用 MJH_PYTHON 指定解释器。'; exit 1; fi
 "$SETUP_PYTHON" -c 'import sys; assert sys.version_info >= (3,10), "需要 Python 3.10+"'
-node -e 'const [a,b]=process.versions.node.split(".").map(Number); if(!((a===20&&b>=19)||(a===22&&b>=12)||a>22)) throw Error("需要 Node.js 20.19+ 或 22.12+")'
+node -e 'const [major]=process.versions.node.split(".").map(Number); if(!(major>=22)) throw Error("需要 Node.js 22+")'
 [[ -d .venv ]] || "$SETUP_PYTHON" -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 npm ci

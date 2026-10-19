@@ -17,15 +17,18 @@
     "test:backup": "node scripts/test-agent.mjs tests/projectBackup.test.ts"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "3.0.71",
     "@supabase/supabase-js": "2.109.0",
     "@tiptap/markdown": "^3.31.3",
     "@tiptap/pm": "^3.31.3",
     "@tiptap/react": "^3.31.3",
     "@tiptap/starter-kit": "^3.31.3",
     "@xyflow/react": "^12.11.2",
+    "ai": "7.0.143",
     "lucide-react": "^1.26.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/react": "^19.2.17",
@@ -34,5 +37,8 @@
     "typescript": "^7.0.2",
     "vite": "^8.1.5"
   },
-  "license": "AGPL-3.0-only"
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=22"
+  }
 }

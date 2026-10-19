@@ -24,7 +24,7 @@ This release runs locally. It does **not** include cloud project synchronization
 ### Requirements
 
 - macOS or Linux; use WSL on Windows.
-- Node.js 20.19+ or 22.12+.
+- Node.js 22 or newer. AI SDK 7, used by the canvas Agent, does not support the previous 20.19 baseline.
 - Python 3.10+.
 - Internet access to install dependencies and, optionally, call model providers.
 
@@ -97,12 +97,12 @@ First-frame and reference-image video generation are not included in this releas
 
 The Agent offers two modes:
 
-- **AI 模型** (AI model): calls the selected text model to read the current canvas and propose scripts, storyboards, or canvas operations.
-- **本地工具** (Local tools): performs rule-based reading, arrangement, duplication, editing, and card creation without calling a model. Text splitting preserves the original text; it is not AI writing.
+- **AI 模型** (AI model): runs a multi-step observe-and-act loop in the browser with the Vercel AI SDK. Model requests go only to the local `POST /api/agent/chat/completions` proxy, which injects the text-model key. The browser does not store the Agnes key and does not call the Vercel AI Gateway. The panel shows each tool step. Deletes, creating or duplicating more than 8 cards at once, and image/video generation proposals wait for approval. A proposal is stored on the card and does not call `/api/images/generate` or `/api/videos/generate`. Canvases larger than 40 cards are searched and read by id. Conversations are stored per episode in `mjh.agentSessions.v1`, separate from the project canvas in `mjh.projects.v1`.
+- **本地工具** (Local tools): performs rule-based reading, arrangement, duplication, editing, and card creation without calling a model. Text splitting preserves the original text; it is not AI writing. The whole plan is still confirmed before it is written.
 
-Proposed modifications show a plan and text preview first. Click **确认执行** (Confirm execution) to apply them. Splitting preserves the source card and adds reference connections. Applied plans can be undone as a unit, subject to subsequent edits. Stale plans are rejected rather than overwriting newer work. Failed AI requests report errors instead of silently executing local alternatives.
+Each successful AI write is on the normal undo stack, and a finished run can be undone as a unit unless the canvas changed afterwards. A failed request or the stop button keeps steps that already landed and does not fall back to local rules. A run stops after 12 steps, or when the same tool is repeated with the same arguments. Balanced permission auto-runs structural edits inside the quota; confirm-all asks before every write. The Agent text model defaults to `agnes-3.0-flash` and is chosen separately from the text console.
 
-Current AI planning limits: up to 40 cards, prioritizing selected cards; the first 6,000 characters per card; and up to 8 newly created or duplicated cards per plan. Agent conversations are not persisted. The Agent can create media placeholders, but media generation is initiated separately from the card panel.
+Paid image and video generation still starts from the card panel. Audio, a director timeline, video compositing, cloud asset libraries, and billing are out of scope.
 
 ## Projects, assets, and storage
 
