@@ -1,3 +1,4 @@
+import { apiFetch } from "../lib/apiClient";
 import { modelRequest } from "../lib/modelConfigs";
 import type { CanvasNode, CanvasEdge, CardKind } from "../types";
 
@@ -135,7 +136,7 @@ export async function planCanvasInstruction(instruction: string, nodes: CanvasNo
   if (options.signal?.aborted) controller.abort();
   const timeout = setTimeout(abort, 45000);
   try {
-    const response = await fetch("/api/chat", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:buildAgentPrompt(instruction,nodes,options.edges || []),...modelRequest("text", options.model)}),signal:controller.signal});
+    const response = await apiFetch("/api/chat", {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({prompt:buildAgentPrompt(instruction,nodes,options.edges || []),...modelRequest("text", options.model)}),signal:controller.signal});
     const data = await response.json().catch(() => null);
     if (!response.ok || !data?.text) throw new Error(data?.detail || data?.message || `AI 服务返回 ${response.status}`);
     const start = data.text.indexOf("{"), end = data.text.lastIndexOf("}");

@@ -4,6 +4,8 @@ import { ArrowRight, Clapperboard, FileText, Image, UserRound, X, LogOut, Settin
 import { supabase, authError, authRedirect } from './client';
 import { setAccountScope } from './accountStorage';
 import { importLocalLibrary } from './importLocalLibrary';
+import { uploadLocalLibrary } from './uploadLocalLibrary';
+import { isHostedMode } from '../lib/hosted';
 import './auth.css';
 const ANIMAL_AVATARS = ['🐱', '🐶', '🐼', '🦊', '🐰', '🐻'];
 const animalAvatar = (value: unknown) => typeof value === 'string' && ANIMAL_AVATARS.includes(value) ? value : ANIMAL_AVATARS[0];
@@ -86,7 +88,7 @@ export function AuthProvider({children}:{children:ReactNode}) {
           <label>新密码<input type="password" required minLength={8} autoComplete="new-password" value={password} onChange={e=>setPassword(e.target.value)}/></label>
           <label>再次输入新密码<input type="password" required minLength={8} autoComplete="new-password" value={repeat} onChange={e=>setRepeat(e.target.value)}/></label>
           <button className="auth-primary" disabled={busy}>更新密码</button></form></details>
-        <div className="profile-storage"><strong>本机项目与资产</strong><p>按账号分别保存在当前浏览器，暂未开启跨设备同步。</p><button type="button" disabled={busy} onClick={()=>{if(!window.confirm('将此浏览器原有的本机项目和资产复制到当前账号？原件会保留。'))return;void perform(async()=>{await importLocalLibrary(user.id);window.location.replace('/#/projects');});}}><Download size={16}/>导入原有本机内容</button></div>
+        <div className="profile-storage"><strong>{isHostedMode() ? '云端项目与资产' : '本机项目与资产'}</strong><p>{isHostedMode() ? '登录后的项目保存在云端，可以在其他设备打开。上传会生成新副本，不覆盖云端已有项目，本机原件仍会保留。' : '按账号分别保存在当前浏览器，暂未开启跨设备同步。'}</p><button type="button" disabled={busy} onClick={()=>{if(!window.confirm(isHostedMode() ? '把此浏览器未登录时的项目和素材作为新副本上传到云端？原件会保留。' : '将此浏览器原有的本机项目和资产复制到当前账号？原件会保留。'))return;void perform(async()=>{if(isHostedMode()) await uploadLocalLibrary(user.id); else await importLocalLibrary(user.id);window.location.replace('/#/projects');});}}><Download size={16}/>{isHostedMode() ? '把本机项目上传到云端' : '导入原有本机内容'}</button></div>
         <button className="auth-signout" disabled={busy} onClick={()=>void perform(async()=>{const {error}=await supabase!.auth.signOut({scope:'local'});if(error)throw error;})}><LogOut size={16}/>退出登录</button>
       </div> : <div className="auth-layout"><aside className="auth-story"><img src="/logo-manjinhai.png" alt="漫金海"/><span className="auth-eyebrow">漫金海 · 创作空间</span><h2>让想象，<br/>有迹可循。</h2><p>从一句灵感，到一整个故事。<br/>在同一张画布上，连接文字、图像与影像。</p><div className="auth-story-cards"><FileText/><ArrowRight/><Image/><ArrowRight/><Clapperboard/></div><small>你的下一个故事，从这里开始。</small></aside>
         <form className="auth-form" onSubmit={submit}><span className="auth-eyebrow">欢迎来到漫金海</span><h1>{mode==='register'?'创建你的账号':mode==='forgot'?'找回密码':mode==='recovery'?'设置新密码':'继续你的创作'}</h1><p>{mode==='register'?'用邮箱开启新的创作旅程。':mode==='forgot'?'我们会向你的邮箱发送重置链接。':mode==='recovery'?'输入新密码，重新回到创作。':'登录后进入你的个人创作空间。'}</p>

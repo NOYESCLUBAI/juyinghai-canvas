@@ -1,0 +1,13 @@
+# Render web service for the FastAPI process. Secrets stay in the dashboard,
+# not in this file. Health checks must use /livez, which returns only {"ok": true}.
+services:
+  - type: web
+    name: manjinhai-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /livez
+    envVars:
+      - key: MJH_HOSTED
+        value: "true"
+      - key: MJH_ALLOW_MEMORY_STORE
+        value: "false"

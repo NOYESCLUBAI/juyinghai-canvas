@@ -11,6 +11,11 @@ if not (root / 'LICENSE').is_file():
 for folder, suffixes in [('src', {'.ts','.tsx','.css'}), ('backend',{'.py'}), ('scripts',{'.sh','.mjs','.py'}), ('tests',{'.ts','.html'}), ('public',{'.png'})]:
     files.extend(p for p in (root/folder).rglob('*') if p.is_file() and p.suffix in suffixes and '__pycache__' not in p.parts)
 files.append(root/'docs/open-source-release.md')
+files.append(root/'docs/deploy-overseas.md')
+for name in ('Dockerfile', 'render.yaml', 'vercel.json', '.dockerignore'):
+    files.append(root / name)
+files.extend(p for p in (root / 'supabase').rglob('*.sql') if p.is_file())
+files.extend(p for p in (root / 'deploy').rglob('*') if p.is_file())
 # Fail without printing matching credentials. Manual review is still required.
 patterns = [r'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----', r'\b(?:sk|re)_[A-Za-z0-9]{24,}', r'\bsk-[A-Za-z0-9_-]{24,}', r'\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}']
 for p in files:

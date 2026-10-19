@@ -1,4 +1,5 @@
 import { accountStorage } from "../auth/accountStorage";
+import { apiFetch } from "./apiClient";
 export type ModelKind = "text" | "image" | "video";
 export type ModelConfig = {
   id: string; name: string; kind: ModelKind; protocol: string; base_url: string;
@@ -17,7 +18,7 @@ const STORAGE = "mjh.model-selections.v2";
 export async function configApi<T>(path = "", method = "GET", body?: unknown): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(`/api/model-configs${path}`, {
+    response = await apiFetch(`/api/model-configs${path}`, {
       method, headers: { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(15000),

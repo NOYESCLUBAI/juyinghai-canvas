@@ -84,6 +84,55 @@ class ConfigInput(ConnectionInput):
         return self
 
 
+def catalog_entries(settings, data: dict, env_fallback: bool = True) -> list[dict]:
+    """Builtin catalog plus saved custom rows.
+
+    env_fallback is only for the operator's local process. Hosted catalogs pass
+    False so an empty user connection cannot inherit MJH_*_API_KEY.
+    """
+    groups = {
+        'text': (settings.models, settings.base_url, settings.api_key, 'chat'),
+        'image': (settings.image_models, settings.image_base_url, settings.image_api_key, f'{settings.image_provider}-image'),
+        'video': (settings.video_models, settings.video_base_url, settings.video_api_key, 'agnes-video'),
+    }
+    result = []
+    for kind, (models, url, key, protocol) in groups.items():
+        for model in dict.fromkeys([*models, *CATALOG[kind]]):
+            is_agnes = model.startswith('agnes-')
+            connection = data.get('agnes') if is_agnes else None
+            if connection:
+                base_url = connection['base_url']
+                api_key = connection['api_key']
+            elif env_fallback:
+                base_url = url if model in models else DEFAULT_URL
+                api_key = key if model in models or 'agnes-ai.' in url else ''
+            else:
+                base_url = DEFAULT_URL
+                api_key = ''
+            entry = {
+                'id': f'builtin:{kind}:{model}', 'name': model, 'model': model,
+                'kind': kind, 'protocol': ('chat' if kind == 'text' else f'agnes-{kind}') if is_agnes else protocol,
+                'base_url': base_url,
+                'api_key': api_key,
+                'builtin': True,
+                'pricing': CATALOG[kind].get(model, ''),
+            }
+            if kind == 'video':
+                parsed = urlsplit(entry['base_url'])
+                if env_fallback and not connection and model in models:
+                    entry['query_base_url'] = settings.video_query_base_url
+                else:
+                    entry['query_base_url'] = urlunsplit((parsed.scheme, parsed.netloc, '', '', ''))
+            result.append(entry)
+    customs = []
+    for item in data.get('configs') or []:
+        custom = dict(item)
+        custom.setdefault('builtin', False)
+        custom.setdefault('pricing', '')
+        customs.append(custom)
+    return result + customs
+
+
 class ConfigStore:
     def __init__(self, path: Path, settings):
         self.path, self.settings = path, settings
@@ -115,31 +164,7 @@ class ConfigStore:
 
     def all(self):
         with self.lock:
-            data = self.read()
-            s = self.settings
-            groups = {
-                'text': (s.models, s.base_url, s.api_key, 'chat'),
-                'image': (s.image_models, s.image_base_url, s.image_api_key, f'{s.image_provider}-image'),
-                'video': (s.video_models, s.video_base_url, s.video_api_key, 'agnes-video'),
-            }
-            result = []
-            for kind, (models, url, key, protocol) in groups.items():
-                for model in dict.fromkeys([*models, *CATALOG[kind]]):
-                    is_agnes = model.startswith('agnes-')
-                    connection = data.get('agnes') if is_agnes else None
-                    entry = {
-                        'id': f'builtin:{kind}:{model}', 'name': model, 'model': model,
-                        'kind': kind, 'protocol': ('chat' if kind == 'text' else f'agnes-{kind}') if is_agnes else protocol,
-                        'base_url': connection['base_url'] if connection else (url if model in models else DEFAULT_URL),
-                        'api_key': connection['api_key'] if connection else (key if model in models or 'agnes-ai.' in url else ''),
-                        'builtin': True,
-                        'pricing': CATALOG[kind].get(model, ''),
-                    }
-                    if kind == 'video':
-                        parsed = urlsplit(entry['base_url'])
-                        entry['query_base_url'] = urlunsplit((parsed.scheme, parsed.netloc, '', '', '')) if connection or model not in models else s.video_query_base_url
-                    result.append(entry)
-            return result + data['configs']
+            return catalog_entries(self.settings, self.read(), env_fallback=True)
 
     @staticmethod
     def public(entry):

@@ -16,7 +16,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from urllib.parse import urlsplit, urlunsplit
+from backend.auth import hosted_guard
+from backend.log_safety import install_log_redaction
 from backend.model_configs import ConfigStore, ConfigInput, ConnectionInput
+from backend.runtime import is_hosted, public_origins
 from pydantic import BaseModel, Field
 
 
@@ -156,7 +159,10 @@ LOCAL_ORIGINS = [f"http://{host}:{port}" for host in ("127.0.0.1", "localhost") 
 config_store = ConfigStore(PROJECT_ROOT / '.local' / 'model-configs.json', settings)
 
 
-def request_settings(kind: str, config_id: str | None, model: str | None):
+def request_settings(kind: str, config_id: str | None, model: str | None, user=None):
+    if is_hosted():
+        from backend.user_configs import hosted_settings
+        return hosted_settings(user, settings, kind, config_id, model)
     default = {'text': settings.model, 'image': settings.image_model, 'video': settings.video_model}[kind]
     entry = config_store.get(config_id or f'builtin:{kind}:{model or default}', kind)
     if not entry['api_key']:
@@ -220,7 +226,9 @@ class ImageGenerationRequest(BaseModel):
 
 
 class GeneratedImage(BaseModel):
-    data_url: str
+    data_url: Optional[str] = None
+    asset_id: Optional[str] = None
+    url: Optional[str] = None
     revised_prompt: Optional[str] = None
 
 
@@ -821,11 +829,26 @@ async def call_agnes(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    install_log_redaction()
     app.state.http_client = httpx.AsyncClient(
         timeout=httpx.Timeout(settings.timeout_seconds, connect=10),
     )
-    yield
-    await app.state.http_client.aclose()
+    stop = asyncio.Event()
+    worker = None
+    if is_hosted():
+        from backend.video_jobs import video_worker
+        worker = asyncio.create_task(video_worker(app, stop))
+    try:
+        yield
+    finally:
+        stop.set()
+        if worker is not None:
+            worker.cancel()
+            try:
+                await worker
+            except asyncio.CancelledError:
+                pass
+        await app.state.http_client.aclose()
 
 
 app = FastAPI(
@@ -835,15 +858,27 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=LOCAL_ORIGINS,
+    allow_origins=[*LOCAL_ORIGINS, *public_origins()],
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
 
+from backend.cloud_routes import router as cloud_router
+
+app.include_router(cloud_router)
+install_log_redaction()
+
+
+@app.get("/livez")
+async def livez() -> dict[str, bool]:
+    return {"ok": True}
+
 
 @app.get("/api/health")
 async def health() -> dict[str, Any]:
+    if is_hosted():
+        return {"status": "ok"}
     entries = config_store.all()
     defaults = {'text': settings.model, 'image': settings.image_model, 'video': settings.video_model}
     result: dict[str, Any] = {'status': 'ok', 'project': '漫金海'}
@@ -859,7 +894,8 @@ async def health() -> dict[str, Any]:
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(chat_request: ChatRequest, request: Request) -> ChatResponse:
-    config, selected_model, entry = request_settings("text", chat_request.model_config_id, chat_request.model)
+    user = getattr(request.state, "user", None)
+    config, selected_model, entry = request_settings("text", chat_request.model_config_id, chat_request.model, user)
 
     client: httpx.AsyncClient = request.app.state.http_client
     try:
@@ -882,8 +918,33 @@ async def chat(chat_request: ChatRequest, request: Request) -> ChatResponse:
 async def generate_video(
     video_request: VideoGenerationRequest,
     request: Request,
-) -> Response:
-    config, selected_model, entry = request_settings("video", video_request.model_config_id, video_request.model)
+):
+    user = getattr(request.state, "user", None)
+    config, selected_model, entry = request_settings("video", video_request.model_config_id, video_request.model, user)
+    if is_hosted():
+        from backend.rate_limit import video_concurrency_limit
+        from backend.runtime import cloud_store
+        from backend.video_jobs import new_job
+        from urllib.parse import urlsplit, urlunsplit
+
+        if user is None:
+            raise HTTPException(401, "请先登录")
+        store = cloud_store()
+        if store.count_open_jobs(user.id) >= video_concurrency_limit():
+            raise HTTPException(429, "视频任务过多，请等待已有任务完成")
+        if not entry.get("query_base_url"):
+            parsed = urlsplit(entry["base_url"])
+            entry = {**entry, "query_base_url": urlunsplit((parsed.scheme, parsed.netloc, "", "", ""))}
+        job = new_job(
+            user_id=user.id,
+            entry=entry,
+            prompt=video_request.prompt.strip(),
+            aspect_ratio=video_request.aspect_ratio,
+            duration=video_request.duration,
+            timeout_seconds=config.video_timeout_seconds,
+        )
+        store.create_job(job)
+        return JSONResponse({"job_id": job["id"], "status": job["status"]})
 
     client: httpx.AsyncClient = request.app.state.http_client
     try:
@@ -916,16 +977,24 @@ async def generate_video(
         ) from provider_error
 
 
-@app.post("/api/images/generate", response_model=ImageGenerationResponse)
+@app.post("/api/images/generate", response_model=ImageGenerationResponse, response_model_exclude_none=True)
 async def generate_image(
     image_request: ImageGenerationRequest,
     request: Request,
 ) -> ImageGenerationResponse:
-    config, selected_model, entry = request_settings("image", image_request.model_config_id, image_request.model)
+    user = getattr(request.state, "user", None)
+    config, selected_model, entry = request_settings("image", image_request.model_config_id, image_request.model, user)
 
     client: httpx.AsyncClient = request.app.state.http_client
     try:
         images = await call_image_model(client, selected_model, image_request, config)
+        if is_hosted() and user is not None:
+            from backend.cloud_routes import store_data_url
+            stored_images = []
+            for index, image in enumerate(images, start=1):
+                asset_id, url = await store_data_url(user.id, image.data_url or "", f"manjinhai-{index}.png")
+                stored_images.append(GeneratedImage(asset_id=asset_id, url=url, revised_prompt=image.revised_prompt))
+            images = stored_images
         return ImageGenerationResponse(
             images=images,
             model=selected_model,
@@ -953,9 +1022,10 @@ async def validation_error(request: Request, exc: RequestValidationError):
 @app.middleware('http')
 async def protect_local_config(request: Request, call_next):
     if request.url.path.startswith('/api/model-configs'):
-        origin = request.headers.get('origin')
-        if origin and origin not in (*LOCAL_ORIGINS, str(request.base_url).rstrip('/')):
-            return JSONResponse(status_code=403, content={'detail': '仅允许本机应用访问模型配置'})
+        if not is_hosted():
+            origin = request.headers.get('origin')
+            if origin and origin not in (*LOCAL_ORIGINS, str(request.base_url).rstrip('/')):
+                return JSONResponse(status_code=403, content={'detail': '仅允许本机应用访问模型配置'})
         if request.method in ('POST', 'PUT') and 'application/json' not in request.headers.get('content-type', ''):
             return JSONResponse(status_code=415, content={'detail': '请使用 JSON 请求'})
     response = await call_next(request)
@@ -964,39 +1034,50 @@ async def protect_local_config(request: Request, call_next):
     return response
 
 
+def configs_for(request: Request):
+    if not is_hosted():
+        return config_store
+    from backend.user_configs import view_for
+    user = getattr(request.state, 'user', None)
+    if user is None:
+        raise HTTPException(401, '请先登录')
+    return view_for(user, settings)
+
+
 @app.get('/api/model-configs')
-async def list_model_configs():
-    connection = config_store.connection()
-    return {'configs': [config_store.public(c) for c in config_store.all()],
+async def list_model_configs(request: Request):
+    store = configs_for(request)
+    connection = store.connection()
+    return {'configs': [store.public(c) for c in store.all()],
             'agnes': {'base_url': connection['base_url'], 'configured': bool(connection['api_key'])},
             'defaults': {'text': settings.model, 'image': settings.image_model, 'video': settings.video_model}}
 
 
 @app.put('/api/model-configs/agnes')
-async def save_agnes_connection(value: ConnectionInput):
-    config_store.save_connection(value)
+async def save_agnes_connection(value: ConnectionInput, request: Request):
+    configs_for(request).save_connection(value)
     return {'saved': True}
 
 
 @app.post('/api/model-configs')
-async def create_model_config(value: ConfigInput):
-    return config_store.save(value)
+async def create_model_config(value: ConfigInput, request: Request):
+    return configs_for(request).save(value)
 
 
 @app.put('/api/model-configs/{config_id}')
-async def update_model_config(config_id: str, value: ConfigInput):
-    return config_store.save(value, config_id)
+async def update_model_config(config_id: str, value: ConfigInput, request: Request):
+    return configs_for(request).save(value, config_id)
 
 
 @app.delete('/api/model-configs/{config_id}')
-async def delete_model_config(config_id: str):
-    config_store.delete(config_id)
+async def delete_model_config(config_id: str, request: Request):
+    configs_for(request).delete(config_id)
     return {'deleted': True}
 
 
 @app.post('/api/model-configs/{config_id}/test')
 async def test_model_connection(config_id: str, request: Request):
-    entry = config_store.get(config_id)
+    entry = configs_for(request).get(config_id)
     if not entry['api_key']:
         return {'status': 'unconfigured', 'message': '未配置 API Key'}
     try:
@@ -1021,3 +1102,6 @@ async def test_model_connection(config_id: str, request: Request):
     if response.is_success and found:
         return {'status': 'reachable', 'message': '模型目录可达且包含该模型；生成能力尚未验证'}
     return {'status': 'unverified', 'message': '已保存，生成时验证（服务未提供可确认的模型目录）'}
+
+
+app.middleware('http')(hosted_guard)

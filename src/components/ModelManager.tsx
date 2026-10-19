@@ -1,5 +1,6 @@
 import { Check, Clapperboard, FileText, Image as ImageIcon, Plus, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { isHostedMode } from "../lib/hosted";
 import { configApi, configValue, type ConfigDraft, type ModelCatalog, type ModelConfig, type ModelKind } from "../lib/modelConfigs";
 
 export type ModelServiceStatus = "loading" | "configured" | "unconfigured" | "unavailable";
@@ -141,7 +142,7 @@ export function ModelManager({ open, groups, onClose, catalog, connectionError, 
         })}
         <p className="model-config-hint">免费状态以平台账单为准。<a href="https://www.agnes-ai.com/zh-Hans/docs/pricing" target="_blank" rel="noreferrer">查看 Agnes 官方定价</a></p>
       </div>
-      <footer className="model-manager-footer"><ShieldCheck size={15}/><span>Key 仅保存在本机后端，不随画布导出。测试连接不会创建生成任务。</span></footer>
+      <footer className="model-manager-footer"><ShieldCheck size={15}/><span>{isHostedMode() ? 'Key 加密后只保存在你的账号下，列表和导出文件都不会带出密钥。测试连接不会创建生成任务。' : 'Key 仅保存在本机后端，不随画布导出。测试连接不会创建生成任务。'}</span></footer>
     </aside>
   </div>;
 }

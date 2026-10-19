@@ -36,6 +36,7 @@ type VideoWriterDockProps = {
   onOptimize: () => void;
   onSubmit: () => void;
   onUndo: () => void;
+  onCancel?: () => void;
 };
 
 export function VideoWriterDock({
@@ -53,6 +54,7 @@ export function VideoWriterDock({
   onOptimize,
   onSubmit,
   onUndo,
+  onCancel,
 }: VideoWriterDockProps) {
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const availableModelOptions = useMemo(
@@ -205,6 +207,11 @@ export function VideoWriterDock({
               撤销生成
             </button>
           ) : null}
+          {onCancel && busy ? (
+            <button className="video-writer-undo" type="button" onClick={onCancel}>
+              停止等待
+            </button>
+          ) : null}
           <span className="video-writer-shortcut">⌘ Enter</span>
           <button
             className="video-writer-submit"
@@ -221,6 +228,7 @@ export function VideoWriterDock({
           </button>
         </div>
       </footer>
+      {onCancel ? <p className="video-billing-note">停止后，已提交的视频可能仍会计费。</p> : null}
     </form>
   );
 }

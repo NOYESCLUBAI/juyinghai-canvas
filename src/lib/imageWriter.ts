@@ -1,3 +1,4 @@
+import { apiFetch } from "./apiClient";
 import { modelRequest } from "./modelConfigs";
 import type {
   ImageAspectRatio,
@@ -15,6 +16,8 @@ type HealthResponse = {
 type ImageResponse = {
   images?: Array<{
     data_url?: string;
+    asset_id?: string;
+    url?: string;
     revised_prompt?: string;
   }>;
   model?: string;
@@ -113,7 +116,7 @@ async function responseError(response: Response) {
 }
 
 export async function readImageModelOptions() {
-  const response = await fetch("/api/health");
+  const response = await apiFetch("/api/health");
   if (!response.ok) {
     throw new Error("无法读取图片模型");
   }
@@ -138,7 +141,7 @@ export async function readImageModelOptions() {
 }
 
 export async function optimizeImagePrompt(prompt: string) {
-  const response = await fetch("/api/chat", {
+  const response = await apiFetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -166,7 +169,7 @@ export async function generateImages(
   settings: ImageGenerationSettings,
   references: ImageReference[],
 ) {
-  const response = await fetch("/api/images/generate", {
+  const response = await apiFetch("/api/images/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -200,9 +203,11 @@ export async function generateImages(
   const images = data.images
     .map((image) => ({
       dataUrl: image.data_url?.trim() || "",
+      assetId: image.asset_id?.trim() || "",
+      previewUrl: image.url?.trim() || "",
       revisedPrompt: image.revised_prompt?.trim(),
     }))
-    .filter((image) => image.dataUrl.startsWith("data:image/"));
+    .filter((image) => image.assetId || image.dataUrl.startsWith("data:image/"));
 
   if (!images.length) {
     throw new Error("图片模型没有返回可用图片");

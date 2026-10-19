@@ -2,3 +2,7 @@ fastapi>=0.116,<1
 httpx[socks]>=0.28,<1
 python-dotenv>=1.1,<2
 uvicorn[standard]>=0.35,<1
+PyJWT>=2.10,<3
+cryptography>=44,<48
+psycopg[binary]>=3.2,<4
+python-multipart>=0.0.20,<1
