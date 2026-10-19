@@ -4,6 +4,10 @@
 
 | Package | Version | License |
 | --- | --- | --- |
+| @ai-sdk/gateway | 4.0.116 | Apache-2.0 |
+| @ai-sdk/openai-compatible | 3.0.71 | Apache-2.0 |
+| @ai-sdk/provider | 4.0.29 | Apache-2.0 |
+| @ai-sdk/provider-utils | 5.0.62 | Apache-2.0 |
 | @emnapi/core | 1.11.1 | MIT |
 | @emnapi/runtime | 1.11.1 | MIT |
 | @emnapi/wasi-threads | 1.2.2 | MIT |
@@ -28,6 +32,7 @@
 | @rolldown/binding-win32-arm64-msvc | 1.1.5 | MIT |
 | @rolldown/binding-win32-x64-msvc | 1.1.5 | MIT |
 | @rolldown/pluginutils | 1.0.1 | MIT |
+| @standard-schema/spec | 1.1.0 | MIT |
 | @supabase/auth-js | 2.109.0 | MIT |
 | @supabase/functions-js | 2.109.0 | MIT |
 | @supabase/phoenix | 0.4.4 | MIT |
@@ -94,9 +99,12 @@
 | @typescript/typescript-sunos-x64 | 7.0.2 | Apache-2.0 |
 | @typescript/typescript-win32-arm64 | 7.0.2 | Apache-2.0 |
 | @typescript/typescript-win32-x64 | 7.0.2 | Apache-2.0 |
+| @vercel/oidc | 3.2.0 | Apache-2.0 |
 | @vitejs/plugin-react | 6.0.4 | MIT |
+| @workflow/serde | 4.1.0 | Apache-2.0 |
 | @xyflow/react | 12.11.2 | MIT |
 | @xyflow/system | 0.0.79 | MIT |
+| ai | 7.0.143 | Apache-2.0 |
 | classcat | 5.0.5 | MIT |
 | csstype | 3.2.3 | MIT |
 | d3-color | 3.1.0 | ISC |
@@ -109,10 +117,12 @@
 | d3-transition | 3.0.1 | ISC |
 | d3-zoom | 3.0.0 | ISC |
 | detect-libc | 2.1.2 | Apache-2.0 |
+| eventsource-parser | 3.1.1 | MIT |
 | fast-equals | 5.4.1 | MIT |
 | fdir | 6.5.0 | MIT |
 | fsevents | 2.3.3 | MIT |
 | iceberg-js | 0.8.1 | MIT |
+| json-schema | 0.4.0 | (AFL-2.1 OR BSD-3-Clause) |
 | lightningcss | 1.33.0 | MPL-2.0 |
 | lightningcss-android-arm64 | 1.33.0 | MPL-2.0 |
 | lightningcss-darwin-arm64 | 1.33.0 | MPL-2.0 |
@@ -155,9 +165,13 @@
 | tinyglobby | 0.2.17 | MIT |
 | tslib | 2.8.1 | 0BSD |
 | typescript | 7.0.2 | Apache-2.0 |
+| undici | 7.30.1 | MIT |
 | use-sync-external-store | 1.6.0 | MIT |
 | vite | 8.1.5 | MIT |
 | w3c-keyname | 2.2.8 | MIT |
 | zustand | 4.5.7 | MIT |
+| zod | 4.6.7 | MIT |
 
 后端直接依赖：FastAPI (MIT)、HTTPX (BSD-3-Clause)、python-dotenv (BSD-3-Clause)、Uvicorn (BSD-3-Clause)。请保留安装包附带的版权与许可声明。
+
+画布 Agent 直接依赖 `ai`（Apache-2.0）、`@ai-sdk/openai-compatible`（Apache-2.0）和 `zod`（MIT）。`@ai-sdk/gateway` 与 `@vercel/oidc` 只是 `ai` 带入的传递依赖；运行时把 OpenAI 兼容客户端的 `baseURL` 指到本机 `/api/agent`，不调用 Vercel AI Gateway。

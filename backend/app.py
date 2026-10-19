@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from urllib.parse import urlsplit, urlunsplit
 from backend.model_configs import ConfigStore, ConfigInput, ConnectionInput
 from pydantic import BaseModel, Field
@@ -942,6 +942,83 @@ async def generate_image(
             status_code=status_code,
             detail=f"{selected_model} 调用失败：{safe_provider_error(provider_error)}",
         ) from provider_error
+
+
+AGENT_PROXY_TIMEOUT = httpx.Timeout(45, connect=10)
+AGENT_FORWARD_SKIP = {"api_key", "apiKey", "authorization", "api_key_header"}
+
+
+def _agent_error_status(status_code: int) -> int:
+    if status_code in {400, 401, 403, 404, 413, 422, 429, 502, 503, 504}:
+        return status_code
+    return 502
+
+
+@app.post("/api/agent/chat/completions")
+async def agent_chat_completions(request: Request):
+    """Inject the local text-model key and forward an OpenAI chat completion.
+
+    The browser never receives the Agnes key. Tool fields are not rewritten.
+    """
+    origin = request.headers.get("origin")
+    if origin and origin not in (*LOCAL_ORIGINS, str(request.base_url).rstrip("/")):
+        return JSONResponse(status_code=403, content={"detail": "仅允许本机应用访问 Agent 转发"})
+    if "application/json" not in request.headers.get("content-type", ""):
+        return JSONResponse(status_code=415, content={"detail": "请使用 JSON 请求"})
+    try:
+        payload = await request.json()
+    except ValueError:
+        return JSONResponse(status_code=422, content={"detail": "配置或请求格式无效，请检查必填字段、API 地址和接口类型"})
+    if not isinstance(payload, dict):
+        return JSONResponse(status_code=422, content={"detail": "配置或请求格式无效，请检查必填字段、API 地址和接口类型"})
+    model = payload.get("model")
+    if not isinstance(model, str) or not model.strip() or len(model) > 120:
+        return JSONResponse(status_code=422, content={"detail": "配置或请求格式无效，请检查必填字段、API 地址和接口类型"})
+    config_id = request.headers.get("x-mjh-model-config") or None
+    config, selected_model, _entry = request_settings("text", config_id, model.strip())
+    forward = {key: value for key, value in payload.items() if key not in AGENT_FORWARD_SKIP}
+    forward["model"] = selected_model
+    stream = forward.get("stream") is True
+    upstream_headers = {
+        "Authorization": f"Bearer {config.api_key}",
+        "Content-Type": "application/json",
+    }
+    client: httpx.AsyncClient = request.app.state.http_client
+    upstream = client.build_request(
+        "POST",
+        f"{config.base_url}/chat/completions",
+        headers=upstream_headers,
+        json=forward,
+        timeout=AGENT_PROXY_TIMEOUT,
+    )
+    try:
+        response = await client.send(upstream, stream=stream)
+    except httpx.TimeoutException as exc:
+        raise HTTPException(status_code=504, detail="模型请求超时，请稍后重试") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail="模型服务连接失败或返回无效结果，请检查接口配置后重试") from exc
+
+    if response.status_code >= 400:
+        await response.aread()
+        await response.aclose()
+        raise HTTPException(
+            status_code=_agent_error_status(response.status_code),
+            detail=safe_provider_error(ProviderError(response.status_code, "")),
+        )
+
+    if stream:
+        async def chunks():
+            try:
+                async for chunk in response.aiter_bytes():
+                    yield chunk
+            finally:
+                await response.aclose()
+
+        return StreamingResponse(chunks(), media_type=response.headers.get("content-type", "text/event-stream"))
+
+    body = await response.aread()
+    await response.aclose()
+    return Response(content=body, media_type=response.headers.get("content-type", "application/json"), status_code=response.status_code)
 
 
 @app.exception_handler(RequestValidationError)

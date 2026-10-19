@@ -1,6 +1,6 @@
 import { accountStorage } from "./auth/accountStorage";
 import { AccountButton } from "./auth/AuthProvider";
-import { loadModelCatalog, configValue, saveModelSelection, selectedConfig, modelLabel, type ModelCatalog } from "./lib/modelConfigs";
+import { loadModelCatalog, configValue, saveModelSelection, selectedConfig, modelLabel, modelRequest, type ModelCatalog } from "./lib/modelConfigs";
 import {
   Background,
   BackgroundVariant,
@@ -103,6 +103,10 @@ import type {
 import { ProjectManager, type WorkspaceProps } from "./projects/ProjectManager";
 
 import { applyCanvasPlan, canvasFingerprint } from "./agent/applyCanvasPlan";
+import { AgentHighlightContext } from "./agent/highlight";
+import { startCanvasAgent, type AgentRunHandle } from "./agent/runtime";
+import { loadAgentSession, saveAgentSession, type AgentStep, type AgentUiMessage } from "./agent/sessionStore";
+import type { ModelMessage } from "ai";
 
 const PROJECT_STORAGE_KEY = "mjh.project.v2";
 const STORAGE_KEY = "mjh.canvas.mvp.v1";
@@ -150,17 +154,7 @@ const cardSizes: Record<CardKind, { width: number; height: number }> = {
   video: { width: 350, height: 250 },
 };
 
-type ChatMessage = {
-  id: string;
-  role: "assistant" | "user";
-  text: string;
-  steps?: string[];
-  mode?: CanvasAgentMode;
-  notice?: string;
-  confirmation?: boolean;
-  plan?: CanvasAgentPlan;
-  undoable?: boolean;
-};
+type ChatMessage = AgentUiMessage;
 
 type CanvasContextMenu = {
   sourceId?: string;
@@ -495,7 +489,15 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [agentSource, setAgentSource] = useState<CanvasAgentMode>("ai");
+  const [agentPermission, setAgentPermission] = useState<"balanced" | "confirm">("balanced");
+  const [agentModel, setAgentModel] = useState("agnes-3.0-flash");
+  const [agentLive, setAgentLive] = useState("");
+  const [agentActiveIds, setAgentActiveIds] = useState<string[]>([]);
+  const [sessionWarning, setSessionWarning] = useState("");
   const agentController = useRef<AbortController | null>(null);
+  const approvalHandle = useRef<AgentRunHandle | null>(null);
+  const modelMessagesRef = useRef<ModelMessage[]>([]);
+  const messagesRef = useRef<ChatMessage[]>([]);
   const pendingFingerprint = useRef("");
   const agentAfterFingerprint = useRef("");
   const messagesEnd = useRef<HTMLDivElement>(null);
@@ -603,13 +605,18 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
     messageId: string;
     snapshot: CanvasHistorySnapshot;
   } | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    const session = loadAgentSession(accountStorage, projectId, initialCanvas.id);
+    if (session?.messages.length) {
+      modelMessagesRef.current = session.modelMessages;
+      return session.messages;
+    }
+    return [{
       id: "hello",
       role: "assistant",
       text: "从一个想法，到完整分镜。\n选中剧本，告诉我接下来想做什么。",
-    },
-  ]);
+    }];
+  });
   const [historyVersion, setHistoryVersion] = useState(0);
   const canvasesRef = useRef(canvases);
   const activeCanvasIdRef = useRef(activeCanvasId);
@@ -640,6 +647,10 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
   useEffect(() => {
     nodesRef.current = nodes;
   }, [nodes]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
 
   useEffect(() => {
     edgesRef.current = edges;
@@ -677,6 +688,12 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
         setImageWriterModels(configs("image"));
         setVideoWriterModels(configs("video"));
         setTextWriterModel(selections.text);
+        setAgentModel((current) => {
+          const textModels = configs("text");
+          if (textModels.includes(current)) return current;
+          if (textModels.includes("agnes-3.0-flash")) return "agnes-3.0-flash";
+          return selections.text || textModels[0] || "agnes-3.0-flash";
+        });
         setImageWriterSettings(current => ({ ...current, model: selections.image }));
         setVideoWriterSettings(current => ({ ...current, model: selections.video }));
         const text = selectedConfig("text");
@@ -925,7 +942,10 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
       setContextMenu(null);
       setPendingAgentPlan(null);
       setAgentUndo(null);
-      setMessages([{id:createId(),role:"assistant",text:"已切换画布。选中内容或描述你的创作想法。"}]);
+      setAgentActiveIds([]);
+      const session = loadAgentSession(accountStorage, projectId, canvas.id);
+      modelMessagesRef.current = session?.modelMessages || [];
+      setMessages(session?.messages.length ? session.messages : [{id:createId(),role:"assistant",text:"已切换画布。选中内容或描述你的创作想法。"}]);
       setComposer("");
       setTextRewriteSelection(null);
       setTextRewriteApplication(null);
@@ -946,7 +966,7 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
         }
       });
     },
-    [hydrateNodesWithMedia, reactFlow],
+    [hydrateNodesWithMedia, projectId, reactFlow],
   );
 
   const switchCanvas = useCallback(
@@ -2257,7 +2277,10 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
           id: messageId,
           role: "assistant",
           text: "已完成：" + plan.actions.map(describeAction).join("；"),
-          steps: ["计划已确认", "画布已更新"],
+          steps: [
+            { id: createId(), tool: "plan", status: "done", text: "计划已确认" },
+            { id: createId(), tool: "plan", status: "done", text: "画布已更新" },
+          ],
           mode,
           notice,
           undoable: true,
@@ -2267,35 +2290,150 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
     [executeAgentPlan],
   );
 
+  const persistAgentTranscript = useCallback((nextMessages: ChatMessage[], modelMessages = modelMessagesRef.current) => {
+    if (!nextMessages.some((message) => message.role === "user")) return;
+    const saved = saveAgentSession(accountStorage, {
+      projectId,
+      canvasId: activeCanvasIdRef.current,
+      updatedAt: new Date().toISOString(),
+      messages: nextMessages,
+      modelMessages,
+    });
+    setSessionWarning(saved.ok ? "" : saved.message);
+  }, [projectId]);
+
   const runAgentCommand = useCallback(async (instruction: string) => {
     const value = instruction.trim();
     if (!value || agentController.current) return;
     const controller = new AbortController();
     agentController.current = controller;
     const canvasId = activeCanvasIdRef.current;
-    const fingerprint = canvasFingerprint(nodesRef.current, edgesRef.current);
-    setMessages(current => [...current.map(message=>({...message,confirmation:false})), {id:createId(),role:"user",text:value}]);
     setComposer("");
     setAgentBusy(true);
     setPendingAgentPlan(null);
-    try {
-      const result = await planCanvasInstruction(value, nodesRef.current, {mode:agentSource,model:textWriterModels.includes(textWriterModel)?textWriterModel:undefined,edges:edgesRef.current,signal:controller.signal});
-      if (controller.signal.aborted || canvasId !== activeCanvasIdRef.current) return;
-      if (fingerprint !== canvasFingerprint(nodesRef.current,edgesRef.current)) throw new Error("规划期间画布已改变，请重新发送指令。");
-      setAgentMode(result.mode);
-      const needsReview = result.plan.actions.length > 0;
-      if (needsReview) {
-        pendingFingerprint.current = fingerprint;
-        setPendingAgentPlan(result.plan);
+    if (agentSource === "demo") {
+      const fingerprint = canvasFingerprint(nodesRef.current, edgesRef.current);
+      setMessages(current => [...current.map(message=>({...message,confirmation:false})), {id:createId(),role:"user",text:value}]);
+      try {
+        const result = await planCanvasInstruction(value, nodesRef.current, {mode:"demo",edges:edgesRef.current,signal:controller.signal});
+        if (controller.signal.aborted || canvasId !== activeCanvasIdRef.current) return;
+        if (fingerprint !== canvasFingerprint(nodesRef.current,edgesRef.current)) throw new Error("规划期间画布已改变，请重新发送指令。");
+        setAgentMode(result.mode);
+        const needsReview = result.plan.actions.length > 0;
+        if (needsReview) {
+          pendingFingerprint.current = fingerprint;
+          setPendingAgentPlan(result.plan);
+        }
+        setMessages(current => {
+          const next = [...current,{id:createId(),role:"assistant" as const,text:result.plan.summary,mode:result.mode,notice:result.notice,confirmation:needsReview,plan:needsReview?result.plan:undefined}];
+          persistAgentTranscript(next);
+          return next;
+        });
+      } catch(error) {
+        setMessages(current => {
+          const next = [...current,{id:createId(),role:"assistant" as const,text:error instanceof Error?error.message:"规划失败，画布未改变。"}];
+          persistAgentTranscript(next);
+          return next;
+        });
+      } finally {
+        agentController.current = null;
+        setAgentBusy(false);
       }
-      setMessages(current=>[...current,{id:createId(),role:"assistant",text:result.plan.summary,mode:result.mode,notice:result.notice,confirmation:needsReview,plan:needsReview?result.plan:undefined}]);
-    } catch(error) {
-      setMessages(current=>[...current,{id:createId(),role:"assistant",text:error instanceof Error?error.message:"规划失败，画布未改变。"}]);
+      return;
+    }
+    const before = {nodes: snapshotNodes(nodesRef.current), edges: cloneEdges(edgesRef.current)};
+    const assistantId = createId();
+    const steps: AgentStep[] = [];
+    setMessages(current => [...current.map(message => ({...message, confirmation:false, approval: message.approval ? {...message.approval, pending:false} : undefined})), {id:createId(), role:"user", text:value}, {id:assistantId, role:"assistant", text:"正在读取画布…", mode:"ai", steps:[]}]);
+    setAgentMode("ai");
+    setAgentLive("正在读取画布");
+    let modelName = agentModel || "agnes-3.0-flash";
+    let modelConfigId: string | undefined;
+    try {
+      const request = modelRequest("text", modelName);
+      modelName = request.model || modelName;
+      modelConfigId = request.model_config_id;
+    } catch { /* 目录还没载入时仍把模型名交给本机转发。 */ }
+    const handle = startCanvasAgent({
+      instruction: value,
+      permission: agentPermission,
+      model: modelName,
+      modelConfigId,
+      history: modelMessagesRef.current,
+      signal: controller.signal,
+      host: {
+        read: () => ({
+          nodes: nodesRef.current,
+          edges: edgesRef.current,
+          anchor: reactFlow.screenToFlowPosition({x: window.innerWidth / 2, y: window.innerHeight / 2}),
+        }),
+        write: (next) => {
+          beginChange();
+          nodesRef.current = next.nodes;
+          edgesRef.current = next.edges;
+          setNodes(next.nodes);
+          setEdges(next.edges);
+        },
+        select: (ids) => {
+          const chosen = new Set(ids);
+          const next = nodesRef.current.map((node) => ({...node, selected: chosen.has(node.id)}));
+          nodesRef.current = next;
+          setNodes(next);
+        },
+        focus: (target) => {
+          const focused = "fit" in target ? nodesRef.current : nodesRef.current.filter((node) => target.cardIds.includes(node.id));
+          void reactFlow.fitView({nodes: focused, padding: 0.3, maxZoom: 1, duration: 260});
+        },
+        createId,
+      },
+      onEvent: (event) => {
+        if (canvasId !== activeCanvasIdRef.current) return;
+        if (event.type === "highlight") setAgentActiveIds(event.cardIds);
+        if (event.type === "save-warning") setSessionWarning(event.message);
+        if (event.type === "status") setAgentLive(event.text);
+        if (event.type === "tool-start") {
+          steps.push({id: createId(), tool: event.tool, status: "running", text: event.summary});
+          setAgentLive(event.summary);
+        }
+        if (event.type === "tool-end") {
+          const currentStep = [...steps].reverse().find((step) => step.tool === event.tool && step.status === "running");
+          if (currentStep) {
+            currentStep.status = event.ok ? "done" : "error";
+            currentStep.text = event.summary;
+          }
+          setAgentLive(event.summary);
+        }
+        if (event.type === "approval") {
+          steps.push({id: event.approvalId, tool: event.tool, status: "approval", text: event.preview});
+          setAgentLive(`等待确认：${event.preview}`);
+          setMessages((current) => current.map((message) => message.id === assistantId ? {...message, text: "这一步需要确认后才会写入。", steps: steps.map((step) => ({...step})), approval: {approvalId: event.approvalId, tool: event.tool, preview: event.preview, pending: true}} : message));
+          return;
+        }
+        if (event.type === "tool-start" || event.type === "tool-end") {
+          setMessages((current) => current.map((message) => message.id === assistantId ? {...message, text: event.type === "tool-start" ? event.summary : message.text, steps: steps.map((step) => ({...step}))} : message));
+        }
+      },
+    });
+    approvalHandle.current = handle;
+    try {
+      const result = await handle.done;
+      if (canvasId !== activeCanvasIdRef.current) return;
+      modelMessagesRef.current = result.modelMessages;
+      agentAfterFingerprint.current = canvasFingerprint(nodesRef.current, edgesRef.current);
+      if (result.wrote) setAgentUndo({messageId: assistantId, snapshot: before});
+      setMessages((current) => {
+        const next = current.map((message) => message.id === assistantId ? {...message, text: result.summary, mode: "ai" as const, steps: steps.map((step) => ({...step})), undoable: result.wrote, approval: message.approval ? {...message.approval, pending: false} : undefined} : message);
+        persistAgentTranscript(next, result.modelMessages);
+        return next;
+      });
     } finally {
       agentController.current = null;
+      approvalHandle.current = null;
       setAgentBusy(false);
+      setAgentLive("");
+      setAgentActiveIds([]);
     }
-  }, [agentSource,textWriterModel,textWriterModels]);
+  }, [agentModel, agentPermission, agentSource, beginChange, persistAgentTranscript, reactFlow]);
 
   useEffect(() => {
     const container = messagesEnd.current?.parentElement;
@@ -2306,18 +2444,26 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
   const submitComposer = () => { void runAgentCommand(composer); };
   const confirmPendingAgentPlan = () => {
     if (!pendingAgentPlan) return;
-    setMessages(current=>current.map(message=>({...message,confirmation:false})));
     if (pendingFingerprint.current !== canvasFingerprint(nodesRef.current,edgesRef.current)) {
       setPendingAgentPlan(null);
-      setMessages(current=>[...current,{id:createId(),role:"assistant",text:"画布在规划后发生了变化，请重新规划，以免覆盖新内容。"}]);
+      setMessages(current => {
+        const next = [...current.map(message=>({...message,confirmation:false})),{id:createId(),role:"assistant" as const,text:"画布在规划后发生了变化，请重新规划，以免覆盖新内容。"}];
+        persistAgentTranscript(next);
+        return next;
+      });
       return;
     }
+    setMessages(current=>current.map(message=>({...message,confirmation:false})));
     completeAgentPlan(pendingAgentPlan,agentMode === "idle" ? "demo" : agentMode);
     setPendingAgentPlan(null);
   };
   const cancelPendingAgentPlan = () => {
     setPendingAgentPlan(null);
-    setMessages(current=>[...current.map(message=>({...message,confirmation:false})),{id:createId(),role:"assistant",text:"已取消，画布保持原样。"}]);
+    setMessages(current => {
+      const next = [...current.map(message=>({...message,confirmation:false})),{id:createId(),role:"assistant" as const,text:"已取消，画布保持原样。"}];
+      persistAgentTranscript(next);
+      return next;
+    });
   };
   const undoAgentOperation = (messageId: string) => {
     if (!agentUndo || agentUndo.messageId !== messageId) return;
@@ -2550,7 +2696,10 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
     canvases.find((canvas) => canvas.id === activeCanvasId) || canvases[0];
   void historyVersion;
 
+  const agentHighlight = useMemo(() => new Set(agentActiveIds), [agentActiveIds]);
+
   return (
+    <AgentHighlightContext.Provider value={agentHighlight}>
     <div
       className={[
         "app-shell",
@@ -3026,12 +3175,13 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
                 </span>
               )}
               <p>{message.text}</p>
-              {message.steps && (
+              {message.steps && message.steps.length > 0 && (
                 <ol className="agent-steps">
                   {message.steps.map((step, index) => (
-                    <li key={`${message.id}-${index}`}>
-                      <Check size={11} strokeWidth={2} />
-                      {step}
+                    <li key={step.id || `${message.id}-${index}`} className={`agent-step-${step.status}`}>
+                      {step.status === "running" ? <LoaderCircle size={11} strokeWidth={2} /> : step.status === "error" ? <X size={11} strokeWidth={2} /> : <Check size={11} strokeWidth={2} />}
+                      <span>{step.tool !== "plan" ? step.tool : "计划"}</span>
+                      {step.text}
                     </li>
                   ))}
                 </ol>
@@ -3048,6 +3198,16 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
                   <button type="button" onClick={cancelPendingAgentPlan}>
                     取消
                   </button>
+                </div>
+              )}
+              {message.approval?.pending && (
+                <div className="agent-approval-card">
+                  <strong>需要确认 · {message.approval.tool}</strong>
+                  <p>{message.approval.preview}</p>
+                  <div className="agent-confirm-actions">
+                    <button type="button" onClick={() => approvalHandle.current?.approve(message.approval!.approvalId)}>批准</button>
+                    <button type="button" onClick={() => approvalHandle.current?.reject(message.approval!.approvalId)}>拒绝</button>
+                  </div>
                 </div>
               )}
               {message.undoable && agentUndo?.messageId === message.id && (
@@ -3067,14 +3227,15 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
               <span className="message-role">画布 Agent</span>
               <p>
                 <LoaderCircle size={15} strokeWidth={1.8} />
-                正在读取画布并规划操作……
+                {agentLive || "正在读取画布并规划操作……"}
               </p>
             </div>
           )}
           <div ref={messagesEnd} />
         </div>
 
-        <div className="agent-model-row"><select aria-label="Agent 运行模式" value={agentSource} disabled={agentBusy} onChange={event=>setAgentSource(event.target.value as CanvasAgentMode)}><option value="ai">AI 模型</option><option value="demo">本地工具</option></select>{agentSource === "ai" ? <select aria-label="Agent 模型" value={textWriterModel} disabled={agentBusy} onChange={event=>selectTextWriterModel(event.target.value)}>{(textWriterModels.length?textWriterModels:[textWriterModel]).map(model=><option key={model} value={model}>{modelLabel(model)}</option>)}</select> : <span>无需模型 · 不消耗额度</span>}</div>
+        <div className="agent-model-row"><select aria-label="Agent 运行模式" value={agentSource} disabled={agentBusy} onChange={event=>setAgentSource(event.target.value as CanvasAgentMode)}><option value="ai">AI 模型</option><option value="demo">本地工具</option></select>{agentSource === "ai" ? <select aria-label="Agent 模型" value={agentModel} disabled={agentBusy} onChange={event=>setAgentModel(event.target.value)}>{(textWriterModels.includes(agentModel)?textWriterModels:[agentModel,...textWriterModels]).map(model=><option key={model} value={model}>{modelLabel(model)}</option>)}</select> : <span>无需模型 · 不消耗额度</span>}{agentSource === "ai" && <select aria-label="Agent 确认策略" value={agentPermission} disabled={agentBusy} onChange={event=>setAgentPermission(event.target.value as "balanced" | "confirm")}><option value="balanced">平衡</option><option value="confirm">全部确认</option></select>}</div>
+        {sessionWarning && <p className="agent-save-warning">{sessionWarning}</p>}
         <div className="assistant-scope">
           <span className="scope-dot" />
           {activeCanvas.title} · 已读取 {nodes.length} 张卡片
@@ -3102,8 +3263,8 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
             }}
           />
           <div className="composer-footer">
-            <span>修改前预览 · 执行后可撤销</span>
-            {agentBusy && <button type="button" title="停止规划" onClick={()=>agentController.current?.abort()}><Square size={13}/></button>}
+            <span>{agentSource === "ai" ? "删除、超额新建和生成提案需要确认" : "修改前预览 · 执行后可撤销"}</span>
+            {agentBusy && <button type="button" title="停止本轮" onClick={()=>agentController.current?.abort()}><Square size={13}/></button>}
             <button
               type="submit"
               disabled={!composer.trim() || agentBusy}
@@ -3119,6 +3280,7 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
         </form>
       </aside>
     </div>
+    </AgentHighlightContext.Provider>
   );
 }
 

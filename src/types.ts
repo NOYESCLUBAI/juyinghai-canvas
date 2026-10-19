@@ -51,6 +51,16 @@ export type VideoGenerationRecord = VideoGenerationSettings & {
   size: string;
 };
 
+export type PendingGeneration = {
+  kind: "image" | "video";
+  prompt: string;
+  referenceIds?: string[];
+  aspectRatio?: string;
+  resolution?: ImageResolution;
+  duration?: 5 | 10;
+  proposedAt: string;
+};
+
 export type CanvasCardData = {
   kind: CardKind;
   text?: string;
@@ -59,6 +69,7 @@ export type CanvasCardData = {
   fileName?: string;
   imageGeneration?: ImageGenerationRecord;
   videoGeneration?: VideoGenerationRecord;
+  pendingGeneration?: PendingGeneration;
 };
 
 export type CanvasNode = Node<CanvasCardData, "canvas-card">;
