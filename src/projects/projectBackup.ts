@@ -60,8 +60,8 @@ export async function exportProject(entry: ProjectEntry) {
   const a = document.createElement('a'); a.href=url; a.download=`${entry.project.projectTitle.replace(/[\\/:*?"<>|]/g,'_')}.mjh.json`; a.click();
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-export async function importProject(file: File, commit: (entry: ProjectEntry) => void) {
-  if (file.size > BACKUP_LIMIT) throw new Error('当前支持不超过 100 MB 的项目备份。');
+export async function importProject(file: File, commit: (entry: ProjectEntry) => void, limit = BACKUP_LIMIT) {
+  if (file.size > limit) throw new Error(limit === BACKUP_LIMIT ? '当前支持不超过 100 MB 的项目备份。' : '备份文件过大。云端导入请把单个备份控制在 512 MB 以内，素材会逐个上传。');
   const backup = parseBackup(await file.text());
   const ids = new Map<string,string>();
   let committed = false;

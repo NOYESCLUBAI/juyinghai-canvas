@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
-const url = import.meta.env.VITE_SUPABASE_URL;
-const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const viteEnv = import.meta.env ?? {};
+const url = viteEnv?.VITE_SUPABASE_URL;
+const key = viteEnv?.VITE_SUPABASE_PUBLISHABLE_KEY;
 export const supabase = url && key ? createClient(url, key, { auth: { flowType: 'pkce', detectSessionInUrl: true, persistSession: true, autoRefreshToken: true } }) : null;
 export const authRedirect = () => `${window.location.origin}/`;
 export function authError(error: unknown) {

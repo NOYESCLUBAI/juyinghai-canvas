@@ -223,6 +223,17 @@ textarea:focus-visible {
   gap: 14px;
 }
 
+.source-link {
+  color: #777;
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.source-link:hover {
+  text-decoration: underline;
+}
+
 .history-controls {
   display: flex;
   align-items: center;
@@ -2783,6 +2794,12 @@ textarea:focus-visible {
 
 .video-writer-dock > textarea::placeholder {
   color: var(--ink-mute);
+}
+
+.video-billing-note {
+  margin: 0 16px 12px;
+  color: #8a8a8a;
+  font-size: 12px;
 }
 
 .video-writer-footer {

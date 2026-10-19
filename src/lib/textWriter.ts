@@ -1,3 +1,4 @@
+import { apiFetch } from "./apiClient";
 import { modelRequest } from "./modelConfigs";
 type ChatResponse = {
   text?: string;
@@ -99,7 +100,7 @@ ${instruction.slice(0, 3000)}`;
 }
 
 async function requestTextModel(prompt: string, model: string) {
-  const response = await fetch("/api/chat", {
+  const response = await apiFetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt, ...modelRequest("text", model) }),
@@ -147,7 +148,7 @@ export async function rewriteTextSelection(
 }
 
 export async function readTextModelOptions() {
-  const response = await fetch("/api/health");
+  const response = await apiFetch("/api/health");
   if (!response.ok) {
     throw new Error("无法读取文本模型");
   }

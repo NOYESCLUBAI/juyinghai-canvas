@@ -1,4 +1,6 @@
 import { getAccountScope } from "../auth/accountStorage";
+import { cloudActive } from "./hosted";
+import { cloudAddGlobalAsset, cloudDeleteMedia, cloudListGlobalAssetIds, cloudListGlobalAssets, cloudListProjectAssets, cloudReadMedia, cloudRegisterProjectAsset, cloudSaveMedia } from "./cloudMedia";
 const DATABASE_NAME = 'manjinhai-canvas-media';
 const LEGACY_DATABASE_NAME = 'manlinghai-canvas-media';
 export type MediaRecord = { id: string; blob: Blob; fileName: string };
@@ -35,6 +37,7 @@ async function transaction(stores: string[], mode: IDBTransactionMode, run: (tx:
   }); } finally { db.close(); }
 }
 export async function saveMedia(file: File, projectId?: string) {
+  if (cloudActive()) return cloudSaveMedia(file, projectId);
   const id = crypto.randomUUID();
   await transaction(['media', 'projectAssets'], 'readwrite', tx => {
     tx.objectStore('media').put({ id, blob: file, fileName: file.name } satisfies MediaRecord);
@@ -43,6 +46,7 @@ export async function saveMedia(file: File, projectId?: string) {
   changed(); return id;
 }
 export async function deleteMedia(id: string) {
+  if (cloudActive()) { await cloudDeleteMedia(id); return; }
   // History and manually saved assets own their media independently of canvas nodes.
   await transaction(['media', 'projectAssets', 'globalAssets'], 'readwrite', tx => {
     const history = tx.objectStore('projectAssets').index('assetId').count(id);
@@ -54,6 +58,7 @@ export async function deleteMedia(id: string) {
   });
 }
 export async function readMedia(id: string): Promise<MediaRecord | undefined> {
+  if (cloudActive()) return cloudReadMedia(id);
   for (const name of (getAccountScope() ? [activeDatabaseName()] : [DATABASE_NAME, LEGACY_DATABASE_NAME])) {
     const db = await openDatabase(name);
     try {
@@ -66,6 +71,7 @@ export async function readMedia(id: string): Promise<MediaRecord | undefined> {
   }
 }
 export async function registerProjectAsset(asset: ProjectAsset) {
+  if (cloudActive()) { await cloudRegisterProjectAsset(asset); return; }
   const media = await readMedia(asset.assetId);
   if (!media) return;
   await transaction(['media', 'projectAssets'], 'readwrite', tx => {
@@ -76,6 +82,7 @@ export async function registerProjectAsset(asset: ProjectAsset) {
   });
 }
 export async function listProjectAssets(projectId: string) {
+  if (cloudActive()) return cloudListProjectAssets(projectId);
   let assets: ProjectAsset[] = [];
   await transaction(['projectAssets'], 'readonly', tx => {
     const request = tx.objectStore('projectAssets').index('projectId').getAll(projectId);
@@ -84,6 +91,7 @@ export async function listProjectAssets(projectId: string) {
   return assets.sort((a,b) => b.createdAt.localeCompare(a.createdAt));
 }
 export async function listGlobalAssetIds() {
+  if (cloudActive()) return cloudListGlobalAssetIds();
   let ids: string[] = [];
   await transaction(['globalAssets'], 'readonly', tx => {
     const request = tx.objectStore('globalAssets').getAllKeys();
@@ -91,6 +99,13 @@ export async function listGlobalAssetIds() {
   }); return ids;
 }
 export async function addGlobalAsset(asset: ProjectAsset) {
+  if (cloudActive()) {
+    const media = await readMedia(asset.assetId);
+    if (!media) throw new Error('素材文件不可用，请重新上传。');
+    await cloudAddGlobalAsset({ ...asset, savedAt: new Date().toISOString() });
+    changed();
+    return;
+  }
   const media = await readMedia(asset.assetId);
   if (!media) throw new Error('素材文件不可用，请重新上传。');
   await transaction(['media', 'globalAssets'], 'readwrite', tx => {
@@ -102,6 +117,7 @@ export async function addGlobalAsset(asset: ProjectAsset) {
 
 export type GlobalAsset = ProjectAsset & { savedAt: string };
 export async function listGlobalAssets() {
+  if (cloudActive()) return cloudListGlobalAssets();
   let assets: GlobalAsset[] = [];
   await transaction(['globalAssets'], 'readonly', tx => {
     const request = tx.objectStore('globalAssets').getAll();

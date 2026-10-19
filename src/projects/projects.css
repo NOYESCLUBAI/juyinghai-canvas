@@ -12,7 +12,8 @@
 .home-sidebar nav button { border: 0; background: transparent; height: 44px; border-radius: 9px; display: flex; align-items: center; gap: 13px; padding: 0 16px; color: #707070; text-align: left; }
 .home-sidebar nav button[aria-current], .home-sidebar nav button:hover { background: #f1f1f1; color: #171717; }
 .home-sidebar nav button[aria-current] { font-weight: 600; }
-.home-storage { margin: auto 12px 0; padding-top: 22px; border-top: 1px solid var(--home-line); display: flex; align-items: center; gap: 12px; font-size: 12px; color: #777; }
+.home-storage { margin: auto 12px 0; padding-top: 22px; border-top: 1px solid var(--home-line); display: flex; flex-direction: column; align-items: flex-start; gap: 10px; font-size: 12px; color: #777; }
+.home-storage-row { display: flex; align-items: center; gap: 12px; }
 .home-main { padding: 40px 44px 60px; min-width: 0; overflow: auto; }
 .home-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; margin-bottom: 32px; }
 .home-heading h1 { margin: 0; font-size: 32px; line-height: 1.3; letter-spacing: -.8px; font-weight: 650; }

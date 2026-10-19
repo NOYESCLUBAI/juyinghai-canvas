@@ -1,5 +1,8 @@
 import { accountStorage } from "./auth/accountStorage";
 import { AccountButton } from "./auth/AuthProvider";
+import { SourceFooter } from "./components/SourceFooter";
+import { resolveApiUrl } from "./lib/apiClient";
+import { cloudActive } from "./lib/hosted";
 import { loadModelCatalog, configValue, saveModelSelection, selectedConfig, modelLabel, type ModelCatalog } from "./lib/modelConfigs";
 import {
   Background,
@@ -75,7 +78,7 @@ import {
 } from "./lib/imageWriter";
 import { tidyCanvas, CANVAS_GRID_SIZE } from "./lib/tidyCanvas";
 import { ProjectAssetsButton } from "./assets/ProjectAssets";
-import { deleteMedia, readMedia, saveMedia, type ProjectAsset } from "./lib/mediaStore";
+import { deleteMedia, readMedia, registerProjectAsset, saveMedia, type ProjectAsset } from "./lib/mediaStore";
 import {
   generateTextForCard,
   rewriteTextSelection,
@@ -83,6 +86,8 @@ import {
 } from "./lib/textWriter";
 import {
   DEFAULT_VIDEO_SETTINGS,
+  VideoCancelled,
+  cancelActiveVideo,
   generateVideo,
   optimizeVideoPrompt,
 } from "./lib/videoWriter";
@@ -1785,8 +1790,13 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
           .slice(0, 19);
         for (const [index, image] of generated.images.entries()) {
           const fileName = `漫金海-${timeLabel}-${index + 1}.png`;
-          const file = dataUrlToFile(image.dataUrl, fileName);
-          const assetId = await saveMedia(file, projectId);
+          const file = image.assetId
+            ? new File([await (await fetch(resolveApiUrl(image.previewUrl || image.dataUrl))).blob()], fileName, { type: "image/png" })
+            : dataUrlToFile(image.dataUrl, fileName);
+          const assetId = image.assetId || await saveMedia(file, projectId);
+          if (image.assetId) {
+            await registerProjectAsset({ projectId, assetId, kind: "image", fileName, createdAt: new Date().toISOString() });
+          }
           const assetUrl = URL.createObjectURL(file);
           objectUrlsRef.current.add(assetUrl);
           storedImages.push({ assetId, assetUrl, fileName });
@@ -2009,7 +2019,10 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
       const file = new File([generated.blob], fileName, {
         type: generated.blob.type || "video/mp4",
       });
-      const assetId = await saveMedia(file, projectId);
+      const assetId = generated.assetId || await saveMedia(file, projectId);
+      if (generated.assetId) {
+        await registerProjectAsset({ projectId, assetId, kind: "video", fileName, createdAt: new Date().toISOString() });
+      }
       const assetUrl = URL.createObjectURL(file);
       objectUrlsRef.current.add(assetUrl);
       storedVideo = { assetId, assetUrl, fileName };
@@ -2059,7 +2072,7 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
     } catch (error) {
       if (videoWriterRequestRef.current === requestId) {
         setVideoWriterFeedback({
-          type: "error",
+          type: error instanceof VideoCancelled ? "success" : "error",
           text: error instanceof Error ? error.message : "视频生成失败，请重试",
           nodeId: target.id,
         });
@@ -2603,7 +2616,7 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
           </button>
         </div>
 
-        <div className="topbar-actions"><AccountButton/>
+        <div className="topbar-actions"><SourceFooter/><AccountButton/>
           <button
             className="model-manager-trigger"
             type="button"
@@ -2949,6 +2962,7 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
           onOptimize={() => void optimizeCurrentVideoPrompt()}
           onSubmit={() => void submitVideoWriter()}
           onUndo={undoVideoWriter}
+          onCancel={cloudActive() ? () => cancelActiveVideo() : undefined}
         />
       )}
 

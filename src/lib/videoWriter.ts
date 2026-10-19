@@ -1,3 +1,4 @@
+import { apiFetch, resolveApiUrl } from "./apiClient";
 import { modelRequest } from "./modelConfigs";
 import type {
   VideoAspectRatio,
@@ -45,7 +46,7 @@ async function readError(response: Response) {
 }
 
 export async function readVideoModelOptions() {
-  const response = await fetch("/api/health");
+  const response = await apiFetch("/api/health");
   if (!response.ok) {
     throw new Error("无法读取视频模型");
   }
@@ -70,7 +71,7 @@ export async function readVideoModelOptions() {
 }
 
 export async function optimizeVideoPrompt(prompt: string) {
-  const response = await fetch("/api/chat", {
+  const response = await apiFetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -92,35 +93,116 @@ export async function optimizeVideoPrompt(prompt: string) {
   return data.text.trim();
 }
 
+export class VideoCancelled extends Error {}
+
+let activeAbort: AbortController | null = null;
+let activeJobId: string | null = null;
+
+export function cancelActiveVideo() {
+  const jobId = activeJobId;
+  const current = activeAbort;
+  activeAbort = null;
+  activeJobId = null;
+  current?.abort();
+  if (jobId) {
+    void apiFetch(`/api/video-jobs/${jobId}/cancel`, { method: "POST" }).catch(() => undefined);
+  }
+}
+
+function delay(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new VideoCancelled("已停止等待。已提交的视频可能仍会计费。"));
+    }, { once: true });
+  });
+}
+
+async function pollVideoJob(jobId: string, signal: AbortSignal, settings: VideoGenerationSettings) {
+  const started = Date.now();
+  while (Date.now() - started < 15 * 60 * 1000) {
+    if (signal.aborted) throw new VideoCancelled("已停止等待。已提交的视频可能仍会计费。");
+    const response = await apiFetch(`/api/video-jobs/${jobId}`, { signal });
+    const job = (await response.json().catch(() => null)) as {
+      status?: string; error?: string; notice?: string; asset_id?: string; url?: string;
+      model?: string; seconds?: string; size?: string; detail?: string;
+    } | null;
+    if (!response.ok || !job) throw new Error(job?.detail || "视频任务查询失败");
+    if (job.status === "cancelled") throw new VideoCancelled(job.notice || "已停止等待。已提交的视频可能仍会计费。");
+    if (job.status === "failed") throw new Error(job.error || "视频生成失败");
+    if (job.status === "completed" && job.asset_id && job.url) {
+      const previewUrl = resolveApiUrl(job.url);
+      const file = await fetch(previewUrl);
+      if (!file.ok) throw new Error("视频结果读取失败");
+      const blob = await file.blob();
+      return {
+        blob,
+        assetId: job.asset_id,
+        previewUrl,
+        model: job.model || settings.model,
+        seconds: Number(job.seconds) || settings.duration,
+        size: job.size || "",
+      };
+    }
+    await delay(2000, signal);
+  }
+  throw new Error("视频生成等待超时，请稍后重试");
+}
+
 export async function generateVideo(
   prompt: string,
   settings: VideoGenerationSettings,
 ) {
-  const response = await fetch("/api/videos/generate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      prompt,
-      ...modelRequest("video", settings.model),
-      aspect_ratio: settings.aspectRatio,
-      duration: settings.duration,
-    }),
-  });
+  const controller = new AbortController();
+  activeAbort = controller;
+  activeJobId = null;
+  try {
+    const response = await apiFetch("/api/videos/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt,
+        ...modelRequest("video", settings.model),
+        aspect_ratio: settings.aspectRatio,
+        duration: settings.duration,
+      }),
+      signal: controller.signal,
+    });
 
-  if (!response.ok) {
-    throw new Error(await readError(response));
+    if (!response.ok) {
+      throw new Error(await readError(response));
+    }
+
+    const type = response.headers.get("content-type") || "";
+    if (type.includes("application/json")) {
+      const job = (await response.json().catch(() => null)) as { job_id?: string; detail?: string } | null;
+      if (!job?.job_id) throw new Error(job?.detail || "视频任务没有创建");
+      activeJobId = job.job_id;
+      return await pollVideoJob(job.job_id, controller.signal, settings);
+    }
+
+    const blob = await response.blob();
+    if (!blob.type.startsWith("video/") || !blob.size) {
+      throw new Error("视频模型没有返回可用视频");
+    }
+
+    return {
+      blob,
+      assetId: "",
+      previewUrl: "",
+      model: response.headers.get("X-MJH-Video-Model") || settings.model,
+      seconds:
+        Number(response.headers.get("X-MJH-Video-Seconds")) || settings.duration,
+      size: response.headers.get("X-MJH-Video-Size") || "",
+    };
+  } catch (error) {
+    if (controller.signal.aborted) throw new VideoCancelled("已停止等待。已提交的视频可能仍会计费。");
+    throw error;
+  } finally {
+    if (activeAbort === controller) {
+      activeAbort = null;
+      activeJobId = null;
+    }
   }
-
-  const blob = await response.blob();
-  if (!blob.type.startsWith("video/") || !blob.size) {
-    throw new Error("视频模型没有返回可用视频");
-  }
-
-  return {
-    blob,
-    model: response.headers.get("X-MJH-Video-Model") || settings.model,
-    seconds:
-      Number(response.headers.get("X-MJH-Video-Seconds")) || settings.duration,
-    size: response.headers.get("X-MJH-Video-Size") || "",
-  };
 }

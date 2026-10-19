@@ -1,4 +1,6 @@
 import { exportProject, importProject } from './projectBackup';
+import { cloudActive } from '../lib/hosted';
+import { SourceFooter } from '../components/SourceFooter';
 import { AccountButton } from "../auth/AuthProvider";
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Copy, Folder, ImagePlus, Laptop, MoreHorizontal, Pencil, Plus, Search, Star, Trash2, Undo2, X, FileText, Library } from 'lucide-react';
@@ -30,6 +32,7 @@ export function ProjectCover({ entry }: { entry: ProjectEntry }) {
 type Props = {
   library: ProjectLibrary;
   error: string;
+  storageLabel?: string;
   onImport: (entry: ProjectEntry) => void;
   onOpen: (id: string) => void;
   onCreate: (title: string) => boolean;
@@ -90,10 +93,10 @@ export function ProjectHome(props: Props) {
       <nav aria-label="项目导航">
         {([{id:'all', label:'全部项目', Icon:Folder}, {id:'assets', label:'全局资产', Icon:Library}, {id:'favorites', label:'收藏', Icon:Star}, {id:'trash', label:'回收站', Icon:Trash2}] as const).map(({id,label,Icon}) => <button key={id} type="button" aria-current={section === id ? 'page' : undefined} onClick={() => {setSection(id);setQuery('');setMenuId(null);}}><Icon size={19}/><span>{label}</span></button>)}
       </nav>
-      <div className="home-storage"><Laptop size={17}/><span>本机保存</span></div>
+      <div className="home-storage"><div className="home-storage-row"><Laptop size={17}/><span>{props.storageLabel || '本机保存'}</span></div><SourceFooter/></div>
     </aside>
     <main className="home-main"><div className="home-account"><button className="backup-import" disabled={backupBusy} onClick={()=>backupInput.current?.click()}>{backupBusy?'正在处理备份…':'导入项目备份'}</button><AccountButton/></div>
-      <input ref={backupInput} type="file" accept=".json" hidden aria-label="选择项目备份" onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file) void backupAction(()=>importProject(file,props.onImport),'已导入独立副本，原有项目保持不变。');}}/>
+      <input ref={backupInput} type="file" accept=".json" hidden aria-label="选择项目备份" onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file) void backupAction(()=>importProject(file,props.onImport, cloudActive() ? 512 * 1024 * 1024 : undefined),'已导入独立副本，原有项目保持不变。');}}/>
       {backupNotice && <p role="status">{backupNotice}</p>}
       {section === 'assets' ? <GlobalAssets library={library} onOpenProject={props.onOpen}/> : <>
       <header className="home-heading"><div><h1>{heading}</h1><p>{section === 'all' ? '每一个故事，从这里继续。' : section === 'favorites' ? '把想继续的故事，留在手边。' : '移入这里的项目可以随时恢复。'}</p></div>{section !== 'trash' && <button className="home-primary" onClick={create}><Plus size={18}/>新建项目</button>}</header>
