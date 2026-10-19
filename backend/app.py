@@ -808,7 +808,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="漫金海 API",
+    title="剧影海 API",
     version="0.1.0",
     lifespan=lifespan,
 )
@@ -825,7 +825,7 @@ app.add_middleware(
 async def health() -> dict[str, Any]:
     entries = config_store.all()
     defaults = {'text': settings.model, 'image': settings.image_model, 'video': settings.video_model}
-    result: dict[str, Any] = {'status': 'ok', 'project': '漫金海'}
+    result: dict[str, Any] = {'status': 'ok', 'project': '剧影海'}
     for kind, model in defaults.items():
         prefix = '' if kind == 'text' else kind + '_'
         entry = next(c for c in entries if c['id'] == f'builtin:{kind}:{model}')
@@ -879,7 +879,7 @@ async def generate_video(
                 "X-MJH-Video-Model": selected_model,
                 "X-MJH-Video-Seconds": seconds,
                 "X-MJH-Video-Size": size,
-                "Content-Disposition": 'inline; filename="manjinhai-video.mp4"',
+                "Content-Disposition": 'inline; filename="juyinghai-video.mp4"',
             },
         )
     except ProviderError as provider_error:

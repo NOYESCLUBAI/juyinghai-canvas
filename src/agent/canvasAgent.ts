@@ -114,7 +114,7 @@ export function sanitizeRemotePlan(raw: Record<string, unknown>, nodes: CanvasNo
 function buildAgentPrompt(instruction: string, nodes: CanvasNode[], edges: CanvasEdge[]) {
   const selected = nodes.filter(node => node.selected);
   const scope = [...selected, ...nodes.filter(node => !node.selected)].slice(0, 40);
-  return `你是漫金海画布 Agent，协助剧本创作、分镜拆分和画布管理。返回 JSON：{"summary":"计划说明或问题回答","actions":[]}，不要 Markdown 包裹。
+  return `你是剧影海画布 Agent，协助剧本创作、分镜拆分和画布管理。返回 JSON：{"summary":"计划说明或问题回答","actions":[]}，不要 Markdown 包裹。
 允许的动作：
 {"tool":"create_cards","cardType":"text|image|video","count":1,"texts":["完整新文字"],"referenceIds":["原卡片id"]}
 {"tool":"update_cards","cardIds":["id"],"text":"完整替换内容"}

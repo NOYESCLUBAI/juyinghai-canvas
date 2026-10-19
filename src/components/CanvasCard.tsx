@@ -230,7 +230,7 @@ function MediaPreview({
             onClick={() => {
               const link = document.createElement("a");
               link.href = data.assetUrl || "";
-              link.download = data.fileName || "漫金海生成视频.mp4";
+              link.download = data.fileName || "剧影海生成视频.mp4";
               link.click();
             }}
             title="下载视频"
@@ -261,7 +261,7 @@ export function CanvasCard({
   const previewDialog = useRef<HTMLDialogElement>(null);
   useEffect(() => { if (previewOpen) previewDialog.current?.showModal(); else previewDialog.current?.close(); }, [previewOpen]);
   const imageReady = data.kind === "image" && !!data.assetUrl;
-  const downloadImage = () => { const link = document.createElement("a"); link.href = data.assetUrl || ""; link.download = data.fileName || "漫金海图片.png"; link.click(); };
+  const downloadImage = () => { const link = document.createElement("a"); link.href = data.assetUrl || ""; link.download = data.fileName || "剧影海图片.png"; link.click(); };
   const meta = cardMeta[data.kind];
   const Icon = meta.icon;
   const imageGenerating =

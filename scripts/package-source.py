@@ -21,7 +21,7 @@ for p in files:
     if any(re.search(pattern,content) for pattern in patterns):
         sys.exit(f'检测到疑似凭证，请检查：{p.relative_to(root)}（内容未输出）')
 out = root/'release';out.mkdir(exist_ok=True)
-archive = out/'manjinhai-source.zip'
+archive = out/'juyinghai-source.zip'
 with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:
-    for p in sorted(set(files)): z.write(p, Path('manjinhai')/p.relative_to(root))
+    for p in sorted(set(files)): z.write(p, Path('juyinghai')/p.relative_to(root))
 print(f'已生成 {archive}，共 {len(set(files))} 个文件。未上传；发布前仍需人工审核素材版权和内容。')

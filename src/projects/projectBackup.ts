@@ -3,13 +3,15 @@ import { listProjectAssets, readMedia, saveMedia, registerProjectAsset, deleteMe
 
 export const BACKUP_LIMIT = 100 * 1024 * 1024;
 type BackupMedia = { id: string; name: string; type: string; base64: string };
-type Backup = { format: 'manjinhai-project'; version: 1; entry: ProjectEntry; media: BackupMedia[] };
-const fail = () => { throw new Error('备份格式不正确或内容不完整，请使用漫金海导出的项目备份。'); };
+const BACKUP_FORMATS = ['manjinhai-project', 'juyinghai-project'] as const;
+type BackupFormat = (typeof BACKUP_FORMATS)[number];
+type Backup = { format: BackupFormat; version: 1; entry: ProjectEntry; media: BackupMedia[] };
+const fail = () => { throw new Error('备份格式不正确或内容不完整，请使用剧影海导出的项目备份。'); };
 export function parseBackup(text: string): Backup {
   const b = JSON.parse(text);
   const str = (v: unknown) => typeof v === 'string' && v.length > 0;
   const finite = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
-  if (!b || b.format !== 'manjinhai-project' || b.version !== 1 || !Array.isArray(b.media)) fail();
+  if (!b || !BACKUP_FORMATS.includes(b.format) || b.version !== 1 || !Array.isArray(b.media)) fail();
   const e = b.entry, p = e?.project;
   if (!str(e?.id) || !p || p.version !== 2 || !str(p.projectTitle) || !Array.isArray(p.canvases) || !p.canvases.length) fail();
   const mediaIds = new Set<string>();

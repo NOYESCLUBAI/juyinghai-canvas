@@ -39,7 +39,7 @@ for attempt in {1..30}; do
   if "$PYTHON_BIN" - "$API_PORT" <<'PY' 2>/dev/null
 import json, sys, urllib.request
 with urllib.request.urlopen('http://127.0.0.1:' + sys.argv[1] + '/api/health', timeout=1) as response:
-    assert json.load(response).get('project') == '漫金海'
+    assert json.load(response).get('project') == '剧影海'
 PY
   then READY=1; break; fi
   sleep 1
