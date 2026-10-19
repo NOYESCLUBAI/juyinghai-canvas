@@ -1,8 +1,12 @@
-# Manjinhai · 漫金海
+# Juyinghai · 剧影海
 
 [简体中文](README.md) | **English**
 
 A local AI storytelling canvas for scripts, images, and videos. Organize ideas as connected cards, manage projects and assets, and work with an assistant that proposes canvas edits for your approval.
+
+Repository: https://github.com/NOYESCLUBAI/juyinghai-canvas
+
+The product name is Juyinghai (剧影海). Internal storage and protocol identifiers keep the previous `mjh` prefix so existing browser data and configs keep working: `localStorage` keys (`mjh.*`), the IndexedDB database name (`manjinhai-canvas-media`, plus the older `manlinghai-canvas-media`), the project backup format id (`manjinhai-project`, `.mjh.json`), and `MJH_*` environment variables. Import also accepts `juyinghai-project`. These identifiers are not the user-facing name.
 
 The application interface is currently in Chinese. This document provides English setup and usage instructions.
 
@@ -29,8 +33,8 @@ This release runs locally. It does **not** include cloud project synchronization
 - Internet access to install dependencies and, optionally, call model providers.
 
 ```bash
-git clone https://github.com/NOYESCLUBAI/manjinhai-canvas.git
-cd manjinhai-canvas
+git clone https://github.com/NOYESCLUBAI/juyinghai-canvas.git
+cd juyinghai-canvas
 npm run setup
 npm run dev
 ```

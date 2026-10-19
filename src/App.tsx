@@ -1784,7 +1784,7 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
           .replace(/[:.]/g, "-")
           .slice(0, 19);
         for (const [index, image] of generated.images.entries()) {
-          const fileName = `漫金海-${timeLabel}-${index + 1}.png`;
+          const fileName = `剧影海-${timeLabel}-${index + 1}.png`;
           const file = dataUrlToFile(image.dataUrl, fileName);
           const assetId = await saveMedia(file, projectId);
           const assetUrl = URL.createObjectURL(file);
@@ -2005,7 +2005,7 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
         .toISOString()
         .replace(/[:.]/g, "-")
         .slice(0, 19);
-      const fileName = `漫金海-${timeLabel}.mp4`;
+      const fileName = `剧影海-${timeLabel}.mp4`;
       const file = new File([generated.blob], fileName, {
         type: generated.blob.type || "video/mp4",
       });
@@ -2576,8 +2576,8 @@ function CanvasWorkspace({ projectId, initialProject, onSave, onHome, registerEx
             </button>
           )}
           <button className="brand-home-button" type="button" onClick={onHome} title="返回主页" aria-label="返回主页">
-            <img src="/logo-manjinhai.png" alt="" />
-            <span className="brand-name">漫金海</span>
+            <img src="/logo-juyinghai.png" alt="" />
+            <span className="brand-name">剧影海</span>
           </button>
           <span className="brand-divider" />
           <span className="brand-product">画布</span>

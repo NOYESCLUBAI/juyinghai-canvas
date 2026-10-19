@@ -4,6 +4,7 @@ import { newProject } from '../src/projects/projectStore';
 const entry = newProject('备份测试');
 const data = {format:'manjinhai-project',version:1,entry,media:[]};
 assert.equal(parseBackup(JSON.stringify(data)).entry.project.projectTitle,'备份测试');
+assert.equal(parseBackup(JSON.stringify({...data,format:'juyinghai-project'})).format,'juyinghai-project');
 const node = {id:'n',type:'canvas-card',position:{x:1,y:2},data:{kind:'image',assetId:'image'}};
 entry.project.canvases[0].nodes.push(node as never);
 assert.throws(()=>parseBackup(JSON.stringify(data)),/备份格式/);

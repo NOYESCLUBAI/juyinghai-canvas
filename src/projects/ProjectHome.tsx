@@ -86,7 +86,7 @@ export function ProjectHome(props: Props) {
   function create() { setTitle(''); setDialog({type:'create'}); }
   return <div className="project-home">
     <aside className="home-sidebar">
-      <a href="#/projects" className="home-brand" onClick={() => {setSection('all');setQuery('');}}><img src="/logo-manjinhai.png" alt=""/><span>漫金海</span></a>
+      <a href="#/projects" className="home-brand" onClick={() => {setSection('all');setQuery('');}}><img src="/logo-juyinghai.png" alt=""/><span>剧影海</span></a>
       <nav aria-label="项目导航">
         {([{id:'all', label:'全部项目', Icon:Folder}, {id:'assets', label:'全局资产', Icon:Library}, {id:'favorites', label:'收藏', Icon:Star}, {id:'trash', label:'回收站', Icon:Trash2}] as const).map(({id,label,Icon}) => <button key={id} type="button" aria-current={section === id ? 'page' : undefined} onClick={() => {setSection(id);setQuery('');setMenuId(null);}}><Icon size={19}/><span>{label}</span></button>)}
       </nav>

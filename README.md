@@ -1,8 +1,12 @@
-# 漫金海
+# 剧影海
 
 **简体中文** | [English](README.en.md)
 
-漫金海是一个以文字剧本为核心的 AI 漫剧画布。当前 MVP 支持文字生成、图片生成、视频素材卡片，以及可以读取并操作画布的 AI 助手。
+剧影海（Juyinghai）是一个以文字剧本为核心的 AI 漫剧画布。当前 MVP 支持文字生成、图片生成、视频素材卡片，以及可以读取并操作画布的 AI 助手。
+
+仓库：https://github.com/NOYESCLUBAI/juyinghai-canvas
+
+界面品牌已从「漫金海」改为「剧影海」。为兼容已有浏览器数据与配置，内部存储和协议标识仍使用旧的 `mjh` 前缀：`localStorage` 键（`mjh.*`）、IndexedDB 库名（`manjinhai-canvas-media`，以及更早的 `manlinghai-canvas-media`）、项目备份格式 id（`manjinhai-project`，扩展名 `.mjh.json`）和环境变量（`MJH_*`）。导入备份时同时接受 `juyinghai-project`。这些标识不是界面名称。
 
 ## 开源版本定位
 
@@ -13,6 +17,8 @@
 支持 macOS / Linux；Windows 请使用 WSL。需要 Node.js 20.19+ 或 22.12+、Python 3.10+，以及安装依赖所需的网络连接。
 
 ```bash
+git clone https://github.com/NOYESCLUBAI/juyinghai-canvas.git
+cd juyinghai-canvas
 npm run setup
 npm run dev
 ```
@@ -29,7 +35,7 @@ npm run dev
 
 ## AI API
 
-漫金海只在后端保存模型密钥，浏览器不直接访问模型服务。前端始终调用统一的 `POST /api/images/generate`；FastAPI 根据选中的模型配置选择供应商协议，旧请求仍兼容 `.env` 设置。Agnes 的文生图和图生图都采用 JSON `/images/generations`，参考图放在 `extra_body.image`；标准 OpenAI 供应商的参考图则采用 multipart `/images/edits`。视频生成采用 Agnes AI 异步 `/videos` 接口，由后端创建任务、轮询结果并把最终 MP4 返回给浏览器。
+剧影海只在后端保存模型密钥，浏览器不直接访问模型服务。前端始终调用统一的 `POST /api/images/generate`；FastAPI 根据选中的模型配置选择供应商协议，旧请求仍兼容 `.env` 设置。Agnes 的文生图和图生图都采用 JSON `/images/generations`，参考图放在 `extra_body.image`；标准 OpenAI 供应商的参考图则采用 multipart `/images/edits`。视频生成采用 Agnes AI 异步 `/videos` 接口，由后端创建任务、轮询结果并把最终 MP4 返回给浏览器。
 
 Agnes 图片适配以官方的 [Image 2.1 Flash 文档](https://agnes-ai.com/zh-Hans/docs/agnes-image-21-flash) 和 [Image 2.0 Flash 文档](https://agnes-ai.com/zh-Hans/docs/agnes-image-20-flash) 为准。
 
@@ -82,7 +88,7 @@ Agnes 图片适配以官方的 [Image 2.1 Flash 文档](https://agnes-ai.com/zh-
 
 ## 参考画布布局与 Agent（2026-09-20）
 
-画布按 Pavo 参考页的浅灰工作区、元素目录、浮动工具与生成面板改造，保留漫金海品牌、原有模型和浏览器存储格式。左侧可切换“画布元素 / 项目画布”，支持搜索、类型筛选、点击定位；底部支持添加文字/图片/视频节点、整理全部卡片、小地图、网格吸附及操作指南。
+画布按 Pavo 参考页的浅灰工作区、元素目录、浮动工具与生成面板改造，保留剧影海品牌、原有模型和浏览器存储格式。左侧可切换“画布元素 / 项目画布”，支持搜索、类型筛选、点击定位；底部支持添加文字/图片/视频节点、整理全部卡片、小地图、网格吸附及操作指南。
 
 Agent 支持两种明确的运行模式：
 
@@ -97,7 +103,7 @@ Agent 支持两种明确的运行模式：
 
 ## 主页与项目管理（2026-09-20）
 
-- 默认进入「全部项目」；画布左上角漫金海 Logo 返回主页。支持继续上次创作、搜索、排序、新建、重命名、复制、收藏、选择项目图片作为封面，以及移入回收站和恢复。
+- 默认进入「全部项目」；画布左上角剧影海 Logo 返回主页。支持继续上次创作、搜索、排序、新建、重命名、复制、收藏、选择项目图片作为封面，以及移入回收站和恢复。
 - 每个项目独立保存分集画布、卡片、连线、素材引用和视口。原有 `mjh.project.v2` 项目首次自动迁入 `mjh.projects.v1` 列表，原记录保留不覆盖。
 - 返回主页、浏览器后退和刷新前会立即保存；保存失败或生成任务尚未完成时阻止切换，避免静默丢失内容。复制项目重新生成画布、节点和连线标识，保留媒体引用。
 - 回收站只做可恢复移除，不删除媒体文件。当前仍为本机浏览器存储；已支持资产库与项目备份导入导出，云同步尚未实现。
